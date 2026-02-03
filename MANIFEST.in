@@ -1,0 +1,8 @@
+recursive-include magnax/public *.html *.js *.css *.png *.py *.json
+recursive-include magnax/report *.html *.js *.css *.png *.py *.json *.log
+recursive-include magnax/static *
+recursive-include magnax/templates *.html *.js *.css *.png *.py
+recursive-include magnax/view *.html *.js *.css *.png *.py
+recursive-include magnax/public/adb *
+recursive-include magnax/public/scrcpy *
+recursive-include magnax/public/report_template *

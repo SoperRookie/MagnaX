@@ -1,0 +1,1237 @@
+/**
+ * MagnaX Dark Theme - Grafana Style
+ * A professional dark theme inspired by Grafana's monitoring dashboard
+ */
+
+/* ==================== CSS Variables ==================== */
+:root {
+    /* Background Colors */
+    --magnax-canvas-bg: #111217;
+    --magnax-main-bg: #181b1f;
+    --magnax-card-bg: #1e2128;
+    --magnax-input-bg: #2a2e37;
+    --magnax-hover-bg: #2a2e37;
+
+    /* Border Colors */
+    --magnax-border-weak: #2a2e37;
+    --magnax-border-medium: #3d4453;
+
+    /* Text Colors - White for all text */
+    --magnax-text-primary: #ffffff;
+    --magnax-text-secondary: #ffffff;
+    --magnax-text-disabled: #888888;
+
+    /* Accent Colors - Enhanced brightness for dark background */
+    --magnax-accent-green: #8dd17a;
+    --magnax-accent-blue: #5c9cf5;
+    --magnax-accent-orange: #ffab4a;
+    --magnax-accent-red: #ff6b7a;
+    --magnax-accent-purple: #c99ae8;
+    --magnax-accent-yellow: #ffeb5c;
+    --magnax-accent-cyan: #33e8d8;
+    --magnax-accent-gold: #ffc933;
+
+    /* Chart Colors - Enhanced brightness for dark background */
+    --magnax-chart-cpu: #8dd17a;
+    --magnax-chart-memory: #6ba8ff;
+    --magnax-chart-network-tx: #ffab4a;
+    --magnax-chart-network-rx: #c99ae8;
+    --magnax-chart-fps: #ffeb5c;
+    --magnax-chart-gpu: #33e8d8;
+    --magnax-chart-battery: #ffc933;
+
+    /* Shadows */
+    --magnax-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --magnax-shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* ==================== Body & Page Container ==================== */
+body.Body {
+    background-color: var(--magnax-canvas-bg) !important;
+    color: #ffffff !important;
+}
+
+/* Global white text */
+body.Body,
+body.Body * {
+    color: #ffffff;
+}
+
+/* Keep colored elements */
+.text-success { color: var(--magnax-accent-green) !important; }
+.text-danger { color: var(--magnax-accent-red) !important; }
+.text-warning { color: var(--magnax-accent-orange) !important; }
+.text-primary { color: var(--magnax-accent-blue) !important; }
+.text-muted { color: #cccccc !important; }
+
+/* Override layout-boxed to make UI full width */
+body.Body.layout-boxed {
+    background-color: var(--magnax-canvas-bg) !important;
+}
+
+body.Body.layout-boxed .page {
+    max-width: 100% !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+}
+
+body.Body.layout-boxed .container-xl {
+    max-width: 100% !important;
+    padding-left: 24px !important;
+    padding-right: 24px !important;
+}
+
+.page {
+    background-color: var(--magnax-canvas-bg) !important;
+}
+
+.page-wrapper {
+    background-color: var(--magnax-canvas-bg) !important;
+}
+
+.page-body {
+    background-color: var(--magnax-canvas-bg) !important;
+}
+
+.container-xl {
+    background-color: transparent !important;
+}
+
+/* ==================== Navbar ==================== */
+.navbar {
+    background-color: var(--magnax-main-bg) !important;
+    border-bottom: 1px solid var(--magnax-border-weak) !important;
+    box-shadow: var(--magnax-shadow) !important;
+}
+
+.navbar-brand-autodark {
+    color: var(--magnax-text-primary) !important;
+}
+
+.navbar-brand-autodark label {
+    color: var(--magnax-accent-green) !important;
+}
+
+.navbar-light .navbar-toggler {
+    color: var(--magnax-text-primary) !important;
+    border-color: var(--magnax-border-weak) !important;
+}
+
+.navbar-toggler-icon {
+    filter: invert(1) !important;
+}
+
+/* Nav Items */
+.nav-item a,
+.nav-link {
+    color: var(--magnax-text-secondary) !important;
+}
+
+.nav-item a:hover,
+.nav-link:hover {
+    color: var(--magnax-text-primary) !important;
+}
+
+.nav-link.active {
+    color: var(--magnax-accent-green) !important;
+    border-bottom-color: var(--magnax-accent-green) !important;
+}
+
+/* Status Dot */
+.status-dot {
+    background-color: var(--magnax-accent-red) !important;
+}
+
+/* ==================== Buttons ==================== */
+.btn-primary {
+    background-color: var(--magnax-accent-blue) !important;
+    border-color: var(--magnax-accent-blue) !important;
+    color: #fff !important;
+}
+
+.btn-primary:hover {
+    background-color: #4a8ae6 !important;
+    border-color: #4a8ae6 !important;
+}
+
+.btn-default,
+.btn-secondary,
+.btn-light {
+    background-color: var(--magnax-input-bg) !important;
+    border-color: var(--magnax-border-weak) !important;
+    color: var(--magnax-text-primary) !important;
+}
+
+.btn-default:hover,
+.btn-secondary:hover,
+.btn-light:hover {
+    background-color: var(--magnax-border-medium) !important;
+    border-color: var(--magnax-border-medium) !important;
+    color: var(--magnax-text-primary) !important;
+}
+
+.btn-pill {
+    background-color: var(--magnax-input-bg) !important;
+    border-color: var(--magnax-border-weak) !important;
+    color: var(--magnax-text-primary) !important;
+}
+
+.btn-pill:hover {
+    background-color: var(--magnax-hover-bg) !important;
+    border-color: var(--magnax-accent-green) !important;
+}
+
+.btn-success {
+    background-color: var(--magnax-accent-green) !important;
+    border-color: var(--magnax-accent-green) !important;
+}
+
+.btn-warning {
+    background-color: var(--magnax-accent-orange) !important;
+    border-color: var(--magnax-accent-orange) !important;
+}
+
+.btn-danger {
+    background-color: var(--magnax-accent-red) !important;
+    border-color: var(--magnax-accent-red) !important;
+}
+
+.btn-outline-primary {
+    color: var(--magnax-accent-blue) !important;
+    border-color: var(--magnax-accent-blue) !important;
+}
+
+.btn-outline-primary:hover {
+    background-color: var(--magnax-accent-blue) !important;
+    color: #fff !important;
+}
+
+/* ==================== Cards ==================== */
+.card {
+    background-color: var(--magnax-card-bg) !important;
+    border: 1px solid var(--magnax-border-weak) !important;
+    box-shadow: var(--magnax-shadow) !important;
+}
+
+.card-header {
+    background-color: var(--magnax-card-bg) !important;
+    border-bottom: 1px solid var(--magnax-border-weak) !important;
+    color: var(--magnax-text-primary) !important;
+}
+
+.card-title {
+    color: var(--magnax-text-primary) !important;
+}
+
+.card-body {
+    background-color: var(--magnax-card-bg) !important;
+    color: var(--magnax-text-primary) !important;
+}
+
+.card-footer {
+    background-color: var(--magnax-card-bg) !important;
+    border-top: 1px solid var(--magnax-border-weak) !important;
+}
+
+/* ==================== Dropdown Menu ==================== */
+.dropdown-menu {
+    background-color: var(--magnax-card-bg) !important;
+    border: 1px solid var(--magnax-border-weak) !important;
+    box-shadow: var(--magnax-shadow-lg) !important;
+}
+
+.dropdown-item {
+    color: #ffffff !important;
+}
+
+.dropdown-item:hover,
+.dropdown-item:focus {
+    background-color: var(--magnax-hover-bg) !important;
+    color: var(--magnax-accent-green) !important;
+}
+
+.dropdown-divider {
+    border-color: var(--magnax-border-weak) !important;
+}
+
+/* ==================== Form Controls ==================== */
+.form-control {
+    background-color: var(--magnax-input-bg) !important;
+    border-color: var(--magnax-border-weak) !important;
+    color: var(--magnax-text-primary) !important;
+}
+
+.form-control:focus {
+    background-color: var(--magnax-input-bg) !important;
+    border-color: var(--magnax-accent-blue) !important;
+    box-shadow: 0 0 0 0.2rem rgba(50, 116, 217, 0.25) !important;
+    color: var(--magnax-text-primary) !important;
+}
+
+.form-control::placeholder {
+    color: var(--magnax-text-disabled) !important;
+}
+
+.form-control:disabled,
+.form-control[readonly] {
+    background-color: var(--magnax-main-bg) !important;
+    color: var(--magnax-text-disabled) !important;
+}
+
+.form-label {
+    color: #ffffff !important;
+}
+
+.input-group-text {
+    background-color: var(--magnax-input-bg) !important;
+    border-color: var(--magnax-border-weak) !important;
+    color: var(--magnax-text-secondary) !important;
+}
+
+/* Form Help */
+.form-help {
+    background-color: var(--magnax-input-bg) !important;
+    border-color: var(--magnax-border-weak) !important;
+    color: var(--magnax-text-secondary) !important;
+}
+
+/* File Input - Select File Button */
+input[type="file"].form-control {
+    background-color: var(--magnax-input-bg) !important;
+    border: 2px solid #6c7a8c !important;
+    color: #ffffff !important;
+}
+
+input[type="file"].form-control::file-selector-button {
+    background-color: #3d4453 !important;
+    border: none !important;
+    border-right: 2px solid #6c7a8c !important;
+    color: #ffffff !important;
+    padding: 0.5rem 1rem !important;
+    margin-right: 1rem !important;
+    font-weight: 500 !important;
+    cursor: pointer !important;
+}
+
+input[type="file"].form-control::file-selector-button:hover {
+    background-color: var(--magnax-accent-blue) !important;
+}
+
+/* Webkit browsers (Chrome, Safari) */
+input[type="file"].form-control::-webkit-file-upload-button {
+    background-color: #3d4453 !important;
+    border: none !important;
+    border-right: 2px solid #6c7a8c !important;
+    color: #ffffff !important;
+    padding: 0.5rem 1rem !important;
+    margin-right: 1rem !important;
+    font-weight: 500 !important;
+    cursor: pointer !important;
+}
+
+input[type="file"].form-control::-webkit-file-upload-button:hover {
+    background-color: var(--magnax-accent-blue) !important;
+}
+
+/* ==================== Select2 ==================== */
+.select2-container--bootstrap-5 .select2-selection {
+    background-color: var(--magnax-input-bg) !important;
+    border-color: var(--magnax-border-weak) !important;
+    color: var(--magnax-text-primary) !important;
+}
+
+.select2-container--bootstrap-5 .select2-selection--single .select2-selection__rendered {
+    color: #ffffff !important;
+}
+
+.select2-container--bootstrap-5 .select2-dropdown {
+    background-color: var(--magnax-card-bg) !important;
+    border-color: var(--magnax-border-weak) !important;
+}
+
+.select2-container--bootstrap-5 .select2-results__option {
+    color: #ffffff !important;
+}
+
+.select2-container--bootstrap-5 .select2-results__option--highlighted {
+    background-color: var(--magnax-hover-bg) !important;
+    color: var(--magnax-accent-green) !important;
+}
+
+.select2-container--bootstrap-5 .select2-results__option--selected {
+    background-color: var(--magnax-accent-blue) !important;
+    color: #fff !important;
+}
+
+.select2-container--bootstrap-5 .select2-search--dropdown .select2-search__field {
+    background-color: var(--magnax-input-bg) !important;
+    border-color: var(--magnax-border-weak) !important;
+    color: var(--magnax-text-primary) !important;
+}
+
+.select2-container--bootstrap-5 .select2-selection__placeholder {
+    color: var(--magnax-text-disabled) !important;
+}
+
+.select2-container--bootstrap-5 .select2-selection__arrow b {
+    border-color: var(--magnax-text-secondary) transparent transparent transparent !important;
+}
+
+/* ==================== Checkbox & Switch ==================== */
+.form-check-input {
+    background-color: var(--magnax-input-bg) !important;
+    border-color: var(--magnax-border-weak) !important;
+}
+
+.form-check-input:checked {
+    background-color: var(--magnax-accent-green) !important;
+    border-color: var(--magnax-accent-green) !important;
+}
+
+.form-check-input:focus {
+    border-color: var(--magnax-accent-blue) !important;
+    box-shadow: 0 0 0 0.2rem rgba(50, 116, 217, 0.25) !important;
+}
+
+.form-switch .form-check-input {
+    background-color: var(--magnax-input-bg) !important;
+}
+
+.form-switch .form-check-input:checked {
+    background-color: var(--magnax-accent-green) !important;
+}
+
+/* ==================== Tables ==================== */
+.table {
+    color: #ffffff !important;
+}
+
+.table th,
+.table td {
+    border-color: var(--magnax-border-weak) !important;
+    color: #ffffff !important;
+}
+
+.table thead th {
+    background-color: var(--magnax-main-bg) !important;
+    border-bottom-color: var(--magnax-border-weak) !important;
+    color: #ffffff !important;
+}
+
+.table-striped > tbody > tr:nth-of-type(odd) {
+    background-color: rgba(255, 255, 255, 0.02) !important;
+}
+
+.table-hover > tbody > tr:hover {
+    background-color: var(--magnax-hover-bg) !important;
+}
+
+/* ==================== Left Panel (apm-info) ==================== */
+.apm-info {
+    background-color: var(--magnax-card-bg) !important;
+    border: 1px solid var(--magnax-border-weak) !important;
+    border-radius: 4px;
+}
+
+.apm-info .card {
+    background-color: transparent !important;
+    border: none !important;
+}
+
+.apm-info label {
+    color: var(--magnax-text-secondary) !important;
+}
+
+.apm-info h3,
+.apm-info h4 {
+    color: var(--magnax-text-primary) !important;
+}
+
+/* Device Info Labels */
+.apm-info .text-muted {
+    color: var(--magnax-text-secondary) !important;
+}
+
+/* ==================== Right Panel (apm-data) ==================== */
+.apm-data {
+    background-color: var(--magnax-card-bg) !important;
+    border: 1px solid var(--magnax-border-weak) !important;
+    border-radius: 4px;
+}
+
+.apm-data .card {
+    background-color: transparent !important;
+    border: none !important;
+    border-bottom: 1px solid var(--magnax-border-weak) !important;
+}
+
+.apm-data .card:last-child {
+    border-bottom: none !important;
+}
+
+/* Chart Containers */
+.apm-data .card-body {
+    background-color: transparent !important;
+}
+
+/* ==================== Highcharts ==================== */
+/* Chart background */
+.highcharts-background {
+    fill: var(--magnax-card-bg) !important;
+}
+
+/* Axis labels - White text */
+.highcharts-axis-labels text,
+.highcharts-xaxis-labels text,
+.highcharts-yaxis-labels text {
+    fill: #ffffff !important;
+    color: #ffffff !important;
+}
+
+/* Tooltip - Dark background with white text */
+.highcharts-tooltip > span {
+    background-color: rgba(30, 33, 40, 0.95) !important;
+    border: 1px solid #3d4453 !important;
+    padding: 8px 12px !important;
+    border-radius: 4px !important;
+}
+
+.highcharts-tooltip text,
+.highcharts-tooltip tspan,
+.highcharts-tooltip span {
+    fill: #ffffff !important;
+    color: #ffffff !important;
+}
+
+.highcharts-tooltip-box {
+    fill: rgba(30, 33, 40, 0.95) !important;
+    stroke: #3d4453 !important;
+}
+
+.highcharts-label-box {
+    fill: rgba(30, 33, 40, 0.95) !important;
+    stroke: #3d4453 !important;
+}
+
+/* Chart title and legend */
+.highcharts-title,
+.highcharts-subtitle {
+    fill: #ffffff !important;
+}
+
+.highcharts-legend-item text {
+    fill: #ffffff !important;
+}
+
+/* ==================== ApexCharts Dark Theme ==================== */
+/* Chart background */
+.apexcharts-canvas {
+    background-color: var(--magnax-card-bg) !important;
+}
+
+/* X-axis and Y-axis labels - White text */
+.apexcharts-xaxis-label,
+.apexcharts-yaxis-label {
+    fill: #ffffff !important;
+    font-weight: 500 !important;
+}
+
+.apexcharts-xaxis text,
+.apexcharts-yaxis text {
+    fill: #ffffff !important;
+}
+
+.apexcharts-xaxis-label tspan,
+.apexcharts-yaxis-label tspan {
+    fill: #ffffff !important;
+}
+
+/* Axis title */
+.apexcharts-xaxis-title-text,
+.apexcharts-yaxis-title-text {
+    fill: #ffffff !important;
+}
+
+/* Grid lines */
+.apexcharts-gridlines-horizontal line,
+.apexcharts-gridlines-vertical line {
+    stroke: rgba(255, 255, 255, 0.1) !important;
+}
+
+.apexcharts-grid-borders line {
+    stroke: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Tooltip - Dark background with white text */
+.apexcharts-tooltip {
+    background-color: #1e2128 !important;
+    border: 1px solid #3d4453 !important;
+    color: #ffffff !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
+}
+
+.apexcharts-tooltip-title {
+    background-color: #2a2e37 !important;
+    border-bottom: 1px solid #3d4453 !important;
+    color: #ffffff !important;
+}
+
+.apexcharts-tooltip-text,
+.apexcharts-tooltip-text-y-label,
+.apexcharts-tooltip-text-y-value,
+.apexcharts-tooltip-text-goals-label,
+.apexcharts-tooltip-text-goals-value,
+.apexcharts-tooltip-text-z-label,
+.apexcharts-tooltip-text-z-value {
+    color: #ffffff !important;
+}
+
+.apexcharts-tooltip-series-group {
+    background-color: transparent !important;
+}
+
+.apexcharts-tooltip.apexcharts-theme-light {
+    background-color: #1e2128 !important;
+    border-color: #3d4453 !important;
+}
+
+.apexcharts-tooltip.apexcharts-theme-light .apexcharts-tooltip-title {
+    background-color: #2a2e37 !important;
+    border-bottom-color: #3d4453 !important;
+}
+
+/* Legend */
+.apexcharts-legend-text {
+    color: #ffffff !important;
+}
+
+/* Data labels */
+.apexcharts-data-labels text,
+.apexcharts-datalabel {
+    fill: #ffffff !important;
+}
+
+/* Crosshairs */
+.apexcharts-xcrosshairs,
+.apexcharts-ycrosshairs {
+    stroke: rgba(255, 255, 255, 0.3) !important;
+}
+
+/* Annotations */
+.apexcharts-annotation-text {
+    fill: #ffffff !important;
+}
+
+/* Pie/Donut chart labels */
+.apexcharts-pie-label {
+    fill: #ffffff !important;
+}
+
+/* Toolbar icons */
+.apexcharts-toolbar svg {
+    fill: #ffffff !important;
+}
+
+.apexcharts-menu {
+    background-color: #1e2128 !important;
+    border: 1px solid #3d4453 !important;
+}
+
+.apexcharts-menu-item {
+    color: #ffffff !important;
+}
+
+.apexcharts-menu-item:hover {
+    background-color: #2a2e37 !important;
+}
+
+/* Zoom selection */
+.apexcharts-selection-rect {
+    fill: rgba(90, 156, 245, 0.2) !important;
+}
+
+/* Reset icon */
+.apexcharts-reset-icon,
+.apexcharts-zoom-icon,
+.apexcharts-zoomin-icon,
+.apexcharts-zoomout-icon,
+.apexcharts-pan-icon,
+.apexcharts-download-icon {
+    fill: #ffffff !important;
+}
+
+/* ==================== Analysis Page Buttons ==================== */
+/* Top page buttons (Compare, Save Html, Save Image) in btn-list */
+.btn-list .btn {
+    background-color: #3d4453 !important;
+    border: 2px solid #6c7a8c !important;
+    color: #ffffff !important;
+    padding: 0.5rem 1rem !important;
+    font-weight: 500 !important;
+    border-radius: 4px !important;
+}
+
+.btn-list .btn:hover {
+    background-color: var(--magnax-accent-blue) !important;
+    border-color: var(--magnax-accent-blue) !important;
+    color: #ffffff !important;
+}
+
+.btn-list .btn svg {
+    width: 20px !important;
+    height: 20px !important;
+    margin-right: 4px !important;
+}
+
+/* Card actions buttons (Refresh, Screenshot) */
+.card-actions .btn,
+.btn-actions .btn {
+    background-color: #3d4453 !important;
+    border: 2px solid #6c7a8c !important;
+    color: #ffffff !important;
+    padding: 0.375rem 0.75rem !important;
+    font-weight: 500 !important;
+    border-radius: 4px !important;
+}
+
+.card-actions .btn:hover,
+.btn-actions .btn:hover {
+    background-color: var(--magnax-accent-blue) !important;
+    border-color: var(--magnax-accent-blue) !important;
+    color: #ffffff !important;
+}
+
+/* PK Mode buttons (apm-btn-list) */
+.apm-btn-list .btn {
+    background-color: #3d4453 !important;
+    border: 2px solid #6c7a8c !important;
+    color: #ffffff !important;
+    padding: 0.5rem 1rem !important;
+    font-weight: 500 !important;
+    border-radius: 4px !important;
+}
+
+.apm-btn-list .btn:hover {
+    background-color: var(--magnax-accent-blue) !important;
+    border-color: var(--magnax-accent-blue) !important;
+    color: #ffffff !important;
+}
+
+/* PK Mode button SVG icons - keep colorful, set size */
+.apm-btn-list .btn svg {
+    width: 20px !important;
+    height: 20px !important;
+    margin-right: 4px !important;
+}
+
+/* Card action button icons - keep colorful SVGs, only refresh icon is white */
+
+/* Refresh and Screenshot buttons in chart headers */
+.btn-outline-secondary,
+.btn-outline-primary,
+.btn-outline-default {
+    background-color: #3d4453 !important;
+    border: 2px solid #6c7a8c !important;
+    color: #ffffff !important;
+}
+
+.btn-outline-secondary:hover,
+.btn-outline-primary:hover,
+.btn-outline-default:hover {
+    background-color: var(--magnax-accent-blue) !important;
+    border-color: var(--magnax-accent-blue) !important;
+    color: #ffffff !important;
+}
+
+.btn-outline-primary.active {
+    background-color: var(--magnax-accent-blue) !important;
+    border-color: var(--magnax-accent-blue) !important;
+    color: #ffffff !important;
+}
+
+/* Small buttons in chart area */
+.btn-sm {
+    background-color: #3d4453 !important;
+    border: 2px solid #6c7a8c !important;
+    color: #ffffff !important;
+}
+
+.btn-sm:hover {
+    background-color: var(--magnax-accent-blue) !important;
+    border-color: var(--magnax-accent-blue) !important;
+}
+
+/* White/light buttons */
+.btn-white,
+.btn-light {
+    background-color: #3d4453 !important;
+    border: 2px solid #6c7a8c !important;
+    color: #ffffff !important;
+}
+
+.btn-white:hover,
+.btn-light:hover {
+    background-color: var(--magnax-border-medium) !important;
+    border-color: var(--magnax-accent-blue) !important;
+    color: #ffffff !important;
+}
+
+/* Generic btn class in dark theme - High specificity for analysis page */
+.card .btn:not(.btn-primary):not(.btn-success):not(.btn-danger):not(.btn-warning),
+a.btn:not(.btn-primary):not(.btn-success):not(.btn-danger):not(.btn-warning) {
+    background-color: #3d4453 !important;
+    border: 2px solid #6c7a8c !important;
+    color: #ffffff !important;
+}
+
+.card .btn:not(.btn-primary):not(.btn-success):not(.btn-danger):not(.btn-warning):hover,
+a.btn:not(.btn-primary):not(.btn-success):not(.btn-danger):not(.btn-warning):hover {
+    background-color: var(--magnax-accent-blue) !important;
+    border-color: var(--magnax-accent-blue) !important;
+}
+
+/* Ensure all btn text is white */
+.btn {
+    color: #ffffff !important;
+}
+
+/* Keep button icons colorful - DO NOT override SVG fill colors */
+/* Button SVG paths should use their inline fill attributes */
+
+/* Only make refresh icons white (they use stroke="currentColor") */
+.card-actions .btn svg[stroke="currentColor"],
+.btn-actions .btn svg[stroke="currentColor"],
+.apm-btn-list .btn svg[stroke="currentColor"] {
+    stroke: #ffffff !important;
+}
+
+/* ==================== Tab Navigation ==================== */
+.nav-tabs {
+    border-bottom-color: var(--magnax-border-weak) !important;
+}
+
+.nav-tabs .nav-link {
+    color: var(--magnax-text-secondary) !important;
+    border-color: transparent !important;
+}
+
+.nav-tabs .nav-link:hover {
+    border-color: var(--magnax-border-weak) !important;
+    color: var(--magnax-text-primary) !important;
+}
+
+.nav-tabs .nav-link.active {
+    background-color: var(--magnax-card-bg) !important;
+    border-color: var(--magnax-border-weak) var(--magnax-border-weak) var(--magnax-card-bg) !important;
+    color: var(--magnax-accent-green) !important;
+}
+
+.tab-content {
+    background-color: var(--magnax-card-bg) !important;
+}
+
+.tab-pane {
+    background-color: var(--magnax-card-bg) !important;
+}
+
+.card-tabs .nav-tabs {
+    background-color: var(--magnax-main-bg) !important;
+}
+
+/* ==================== Modal ==================== */
+.modal-content {
+    background-color: var(--magnax-card-bg) !important;
+    border: 1px solid var(--magnax-border-weak) !important;
+}
+
+.modal-header {
+    border-bottom-color: var(--magnax-border-weak) !important;
+}
+
+.modal-title {
+    color: var(--magnax-text-primary) !important;
+}
+
+.modal-body {
+    color: var(--magnax-text-primary) !important;
+}
+
+.modal-footer {
+    border-top-color: var(--magnax-border-weak) !important;
+}
+
+.btn-close {
+    filter: invert(1) !important;
+}
+
+/* ==================== Offcanvas ==================== */
+.offcanvas {
+    background-color: var(--magnax-card-bg) !important;
+    border-left: 1px solid var(--magnax-border-weak) !important;
+}
+
+/* Override layout-boxed restriction on offcanvas */
+.offcanvas.layout-boxed {
+    max-width: 100% !important;
+}
+
+.offcanvas-header {
+    border-bottom: 1px solid var(--magnax-border-weak) !important;
+}
+
+.offcanvas-title {
+    color: var(--magnax-text-primary) !important;
+}
+
+.offcanvas-body {
+    color: var(--magnax-text-primary) !important;
+}
+
+/* ==================== SweetAlert2 ==================== */
+.swal2-popup {
+    background-color: var(--magnax-card-bg) !important;
+    color: var(--magnax-text-primary) !important;
+    border: 1px solid var(--magnax-border-weak) !important;
+}
+
+.swal2-title {
+    color: var(--magnax-text-primary) !important;
+}
+
+.swal2-html-container {
+    color: var(--magnax-text-secondary) !important;
+}
+
+.swal2-confirm {
+    background-color: var(--magnax-accent-blue) !important;
+    border-color: var(--magnax-accent-blue) !important;
+}
+
+.swal2-cancel {
+    background-color: var(--magnax-input-bg) !important;
+    border-color: var(--magnax-border-weak) !important;
+    color: var(--magnax-text-primary) !important;
+}
+
+.swal2-timer-progress-bar {
+    background-color: var(--magnax-accent-green) !important;
+}
+
+.swal2-loader {
+    border-color: var(--magnax-accent-blue) transparent var(--magnax-accent-blue) transparent !important;
+}
+
+/* ==================== Footer ==================== */
+.footer {
+    background-color: var(--magnax-main-bg) !important;
+    border-top: 1px solid var(--magnax-border-weak) !important;
+    color: var(--magnax-text-secondary) !important;
+}
+
+.footer a {
+    color: var(--magnax-text-secondary) !important;
+}
+
+.footer a:hover {
+    color: var(--magnax-accent-green) !important;
+}
+
+/* ==================== Page Title ==================== */
+.page-title {
+    color: var(--magnax-text-primary) !important;
+}
+
+.page-header {
+    border-bottom-color: var(--magnax-border-weak) !important;
+}
+
+/* ==================== Text Utilities ==================== */
+.text-muted {
+    color: #cccccc !important;
+}
+
+/* Force white text on labels and spans */
+label, span, p, div, td, th, li, strong, small {
+    color: #ffffff;
+}
+
+.text-primary {
+    color: var(--magnax-accent-blue) !important;
+}
+
+.text-success {
+    color: var(--magnax-accent-green) !important;
+}
+
+.text-warning {
+    color: var(--magnax-accent-orange) !important;
+}
+
+.text-danger {
+    color: var(--magnax-accent-red) !important;
+}
+
+/* ==================== Alerts ==================== */
+.alert-success {
+    background-color: rgba(115, 191, 105, 0.15) !important;
+    border-color: var(--magnax-accent-green) !important;
+    color: var(--magnax-accent-green) !important;
+}
+
+.alert-warning {
+    background-color: rgba(255, 152, 48, 0.15) !important;
+    border-color: var(--magnax-accent-orange) !important;
+    color: var(--magnax-accent-orange) !important;
+}
+
+.alert-danger {
+    background-color: rgba(242, 73, 92, 0.15) !important;
+    border-color: var(--magnax-accent-red) !important;
+    color: var(--magnax-accent-red) !important;
+}
+
+.alert-info {
+    background-color: rgba(50, 116, 217, 0.15) !important;
+    border-color: var(--magnax-accent-blue) !important;
+    color: var(--magnax-accent-blue) !important;
+}
+
+/* ==================== Badge ==================== */
+.badge {
+    background-color: var(--magnax-input-bg) !important;
+    color: var(--magnax-text-primary) !important;
+}
+
+.badge.bg-primary {
+    background-color: var(--magnax-accent-blue) !important;
+}
+
+.badge.bg-success {
+    background-color: var(--magnax-accent-green) !important;
+}
+
+.badge.bg-warning {
+    background-color: var(--magnax-accent-orange) !important;
+}
+
+.badge.bg-danger {
+    background-color: var(--magnax-accent-red) !important;
+}
+
+/* ==================== Progress Bar ==================== */
+.progress {
+    background-color: var(--magnax-input-bg) !important;
+}
+
+.progress-bar {
+    background-color: var(--magnax-accent-green) !important;
+}
+
+/* ==================== Popover ==================== */
+.popover {
+    background-color: var(--magnax-card-bg) !important;
+    border-color: var(--magnax-border-weak) !important;
+}
+
+.popover-header {
+    background-color: var(--magnax-main-bg) !important;
+    border-bottom-color: var(--magnax-border-weak) !important;
+    color: var(--magnax-text-primary) !important;
+}
+
+.popover-body {
+    color: var(--magnax-text-primary) !important;
+}
+
+.bs-popover-top > .popover-arrow::after,
+.bs-popover-auto[data-popper-placement^="top"] > .popover-arrow::after {
+    border-top-color: var(--magnax-card-bg) !important;
+}
+
+.bs-popover-bottom > .popover-arrow::after,
+.bs-popover-auto[data-popper-placement^="bottom"] > .popover-arrow::after {
+    border-bottom-color: var(--magnax-card-bg) !important;
+}
+
+/* ==================== Tooltip ==================== */
+.tooltip-inner {
+    background-color: var(--magnax-card-bg) !important;
+    border: 1px solid var(--magnax-border-weak) !important;
+    color: var(--magnax-text-primary) !important;
+}
+
+/* ==================== Scrollbar ==================== */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--magnax-main-bg);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--magnax-border-medium);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--magnax-text-disabled);
+}
+
+/* ==================== Links ==================== */
+a {
+    color: #ffffff;
+}
+
+a:hover {
+    color: var(--magnax-accent-green);
+}
+
+a.nav-link,
+a.btn {
+    color: #ffffff !important;
+}
+
+/* ==================== Horizontal Rule ==================== */
+hr {
+    border-color: var(--magnax-border-weak) !important;
+}
+
+/* ==================== List Group ==================== */
+.list-group-item {
+    background-color: var(--magnax-card-bg) !important;
+    border-color: var(--magnax-border-weak) !important;
+    color: var(--magnax-text-primary) !important;
+}
+
+.list-group-item:hover {
+    background-color: var(--magnax-hover-bg) !important;
+}
+
+.list-inline-dots .list-inline-item::before {
+    color: var(--magnax-text-disabled) !important;
+}
+
+/* ==================== Code & Pre ==================== */
+code {
+    background-color: var(--magnax-input-bg) !important;
+    color: var(--magnax-accent-orange) !important;
+}
+
+pre {
+    background-color: var(--magnax-main-bg) !important;
+    border: 1px solid var(--magnax-border-weak) !important;
+    color: var(--magnax-text-primary) !important;
+}
+
+/* Highlight.js Override */
+.hljs {
+    background-color: var(--magnax-main-bg) !important;
+    color: var(--magnax-text-primary) !important;
+}
+
+/* ==================== SVG Icons ==================== */
+/* Only apply to non-button SVGs in navbar/offcanvas */
+.navbar > .container-xl > a svg path,
+.navbar > .container-xl > .nav-item > a:not(.btn) svg path,
+.offcanvas svg path {
+    fill: var(--magnax-text-secondary) !important;
+}
+
+.navbar > .container-xl > a svg:hover path,
+.navbar > .container-xl > .nav-item > a:not(.btn) svg:hover path,
+.offcanvas svg:hover path {
+    fill: var(--magnax-text-primary) !important;
+}
+
+/* Keep colored SVGs as-is for buttons - don't set any fill */
+
+/* Card action button icons - keep colorful SVGs */
+/* Only apply white to refresh icons (stroke-based), not colorful fill-based icons */
+.card-actions .btn .icon,
+.btn-actions .btn .icon,
+.apm-btn-list .btn .icon {
+    color: #ffffff !important;
+}
+
+/* Refresh icon uses stroke - make it white */
+.card-actions .btn svg[stroke="currentColor"],
+.btn-actions .btn svg[stroke="currentColor"],
+.apm-btn-list .btn svg[stroke="currentColor"] {
+    stroke: #ffffff !important;
+}
+
+/* Button SVG icons keep their original inline fill colors - no CSS override needed */
+
+/* ==================== Specific Page Styles ==================== */
+
+/* Index Page - Device Selection Area */
+.device-selection {
+    background-color: var(--magnax-card-bg) !important;
+}
+
+/* Report Page */
+.report-container {
+    background-color: var(--magnax-card-bg) !important;
+}
+
+/* Analysis Page */
+.analysis-container {
+    background-color: var(--magnax-card-bg) !important;
+}
+
+/* ==================== Metric Cards ==================== */
+.metric-card {
+    background-color: var(--magnax-card-bg) !important;
+    border: 1px solid var(--magnax-border-weak) !important;
+    border-radius: 4px;
+    padding: 16px;
+}
+
+.metric-card .metric-value {
+    color: var(--magnax-text-primary) !important;
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.metric-card .metric-label {
+    color: var(--magnax-text-secondary) !important;
+    font-size: 12px;
+    text-transform: uppercase;
+}
+
+.metric-card.cpu .metric-value {
+    color: var(--magnax-chart-cpu) !important;
+}
+
+.metric-card.memory .metric-value {
+    color: var(--magnax-chart-memory) !important;
+}
+
+.metric-card.fps .metric-value {
+    color: var(--magnax-chart-fps) !important;
+}
+
+.metric-card.gpu .metric-value {
+    color: var(--magnax-chart-gpu) !important;
+}
+
+.metric-card.battery .metric-value {
+    color: var(--magnax-chart-battery) !important;
+}
+
+.metric-card.network .metric-value {
+    color: var(--magnax-chart-network-tx) !important;
+}
+
+/* ==================== Responsive Adjustments ==================== */
+@media (max-width: 768px) {
+    .navbar {
+        background-color: var(--magnax-main-bg) !important;
+    }
+
+    .offcanvas {
+        width: 100% !important;
+    }
+}
