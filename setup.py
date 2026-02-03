@@ -23,8 +23,8 @@ with open("README.md", "r", encoding="utf-8") as fh:
 setuptools.setup(
     name='magnax',
     version=get_version(),
-    author='Rafa Chen',
-    author_email='rafacheninc@gmail.com',
+    author='SoperRookie',
+    author_email='rookiessmall@gmail.com',
     description='MagnaX - Real-time collection tool for Android/iOS performance data.',
     long_description=long_description,
     long_description_content_type="text/markdown",

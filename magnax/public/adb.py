@@ -2,10 +2,10 @@
 # encoding=utf-8
 
 """
-@Author  :  Lijiawei
-@Date    :  2022/6/19
+@Author  :  SoperRookie
+@Date    :  2025/6/19
 @Desc    :  adb line.
-@Update  :  2022/7/14 by Rafa chen
+@Update  :  2025/7/14 by SoperRookie
 """
 import os
 import platform

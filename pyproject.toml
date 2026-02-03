@@ -10,7 +10,7 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 authors = [
-    {name = "Rafa Chen", email = "rafacheninc@gmail.com"}
+    {name = "SoperRookie", email = "rookiessmall@gmail.com"}
 ]
 keywords = ["android", "ios", "performance", "testing", "monitoring", "apm"]
 classifiers = [
