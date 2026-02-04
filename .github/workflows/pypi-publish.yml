@@ -17,9 +17,6 @@ jobs:
   build-n-publish:
     name: Build and publish Python 🐍 distributions 📦 to PyPI
     runs-on: ubuntu-22.04
-    permissions:
-      id-token: write
-      contents: read
     steps:
     - uses: actions/checkout@v4
     - name: Set up Python 3.12
@@ -42,3 +39,6 @@ jobs:
         .
     - name: Publish distribution 📦 to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        user: __token__
+        password: ${{ secrets.PYPI_API_TOKEN }}
