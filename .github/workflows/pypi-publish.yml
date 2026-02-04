@@ -24,8 +24,19 @@ jobs:
     - name: Build package
       run: python -m build
 
+    - name: Check secret
+      run: |
+        if [ -z "${{ secrets.PYPI_API_TOKEN }}" ]; then
+          echo "Error: PYPI_API_TOKEN is not set!"
+          exit 1
+        else
+          echo "PYPI_API_TOKEN is set (length: ${#PYPI_API_TOKEN})"
+        fi
+      env:
+        PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+
     - name: Publish to PyPI
       env:
         TWINE_USERNAME: __token__
         TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-      run: twine upload dist/*
+      run: twine upload --verbose dist/*
