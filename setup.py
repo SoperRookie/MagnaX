@@ -43,7 +43,7 @@ setuptools.setup(
         'pyfiglet',
         'psutil',
         'opencv-python',
-        'pymobiledevice3>=2.0.0',
+        'pymobiledevice3>=7.0.0,<8.0.0',
     ],
     entry_points={
         'console_scripts': [

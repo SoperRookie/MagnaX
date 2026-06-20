@@ -38,7 +38,7 @@ dependencies = [
     "pyfiglet",
     "psutil",
     "opencv-python",
-    "pymobiledevice3>=2.0.0",
+    "pymobiledevice3>=7.0.0,<8.0.0",
     "py-ios-device>=2.0.0",
 ]
 
