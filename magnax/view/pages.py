@@ -77,6 +77,8 @@ def analysis():
     platform = request.args.get('platform')
     settings = m._settings(request)
     report_dir = os.path.join(os.getcwd(), 'report')
+    if not os.path.exists(report_dir):
+        os.makedirs(report_dir, exist_ok=True)
     dirs = os.listdir(report_dir)
     filter_dir = f.filter_secen(scene)
     apm_data = {}
@@ -102,8 +104,7 @@ def analysis():
                 pass
             except Exception as e:
                 logger.exception(e)
-            finally:
-                break
+            break
     return render_template('analysis.html', **locals())
 
 @page.route('/pk_analysis', methods=['post', 'get'])
@@ -114,6 +115,8 @@ def analysis_pk():
     model = request.args.get('model')
     settings = m._settings(request)
     report_dir = os.path.join(os.getcwd(), 'report')
+    if not os.path.exists(report_dir):
+        os.makedirs(report_dir, exist_ok=True)
     dirs = os.listdir(report_dir)
     apm_data = {}
     for dir in dirs:
@@ -122,8 +125,7 @@ def analysis_pk():
                 apm_data = f._setpkPerfs(scene)
             except Exception as e:
                 logger.exception(e)
-            finally:
-                break
+            break
     return render_template('analysis_pk.html', **locals())
 
 @page.route('/compare_analysis', methods=['post', 'get'])

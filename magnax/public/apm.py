@@ -80,7 +80,8 @@ class CPU(object):
         self.platform = platform
         self.pid = pid
         if self.pid is None and self.platform == Platform.Android:
-            self.pid = d.getPid(pkgName=self.pkgName, deviceId=self.deviceId)[0].split(':')[0]
+            _pids = d.getPid(pkgName=self.pkgName, deviceId=self.deviceId)
+            self.pid = _pids[0].split(':')[0] if _pids else None
 
     def getprocessCpuStat(self):
         """get the cpu usage of a process at a certain time"""
@@ -103,6 +104,8 @@ class CPU(object):
         lines.pop(0)
         for line in lines:
             toks = line.split()
+            if len(toks) < 8:
+                continue
             if toks[1] in ['', ' ']:
                 toks.pop(1)
             for i in range(1, 8):
@@ -119,6 +122,8 @@ class CPU(object):
         lines.pop(0)
         for line in lines:
             toks = line.split()
+            if len(toks) < 8:
+                continue
             if toks[1] in ['', ' ']:
                 toks.pop(1)
             for i in range(1, 8):
@@ -137,6 +142,8 @@ class CPU(object):
         lines.pop(0)
         for line in lines:
             toks = line.split()
+            if len(toks) < 8:
+                continue
             if toks[1] in ['', ' ']:
                 toks.pop(1)
             idleCpu += float(toks[4])
@@ -153,6 +160,8 @@ class CPU(object):
         lines.pop(0)
         for line in lines:
             toks = line.split()
+            if len(toks) < 8:
+                continue
             if toks[1] in ['', ' ']:
                 toks.pop(1)
             idleCpu += float(toks[4])
@@ -233,7 +242,8 @@ class Memory(object):
         self.platform = platform
         self.pid = pid
         if self.pid is None and self.platform == Platform.Android:
-            self.pid = d.getPid(pkgName=self.pkgName, deviceId=self.deviceId)[0].split(':')[0]
+            _pids = d.getPid(pkgName=self.pkgName, deviceId=self.deviceId)
+            self.pid = _pids[0].split(':')[0] if _pids else None
 
     def getAndroidMemory(self):
         """Get the Android memory ,unit:MB"""
@@ -425,7 +435,8 @@ class Network(object):
         self.platform = platform
         self.pid = pid
         if self.pid is None and self.platform == Platform.Android:
-            self.pid = d.getPid(pkgName=self.pkgName, deviceId=self.deviceId)[0].split(':')[0]
+            _pids = d.getPid(pkgName=self.pkgName, deviceId=self.deviceId)
+            self.pid = _pids[0].split(':')[0] if _pids else None
 
     def getAndroidNet(self, wifi=True):
         """Get Android send/recv data, unit:KB wlan0/rmnet_ipa0"""
@@ -853,9 +864,10 @@ class ThermalSensor(object):
                     'temp':temp
                 }
                 temp_list.append(temp_dict)
-            return temp_list 
+            return temp_list
         else:
-            logger.exception('No permission')     
+            logger.warning('No permission to read thermal zones')
+            return []
 
 class Energy(object):
     def __init__(self, deviceId, packageName):
@@ -1049,7 +1061,8 @@ class initPerformanceService(object):
 
     @classmethod
     def get_status(cls):
-        config_json = open(file=cls.CONIFG_PATH, mode='r').read()
+        with open(file=cls.CONIFG_PATH, mode='r') as _cf:
+            config_json = _cf.read()
         run_switch = json.loads(config_json).get('run_switch')
         return run_switch
     
@@ -1105,7 +1118,7 @@ class AppPerformanceMonitor(initPerformanceService):
         _cpucore = CPU(self.pkgName, self.deviceId, self.platform, pid=self.pid)
         cores = d.getCpuCores(self.deviceId)
         value = _cpucore.getCoreCpuRate(cores=cores, noLog=self.noLog)
-        result = {'cpu{}'.format(value.index(element)):element for element in  value}
+        result = {'cpu{}'.format(i): element for i, element in enumerate(value)}
         logger.info(f'cpu core: {result}')
         return result    
     
@@ -1277,15 +1290,17 @@ class AppPerformanceMonitor(initPerformanceService):
             f.clear_file()
             process_num = 8 if self.record else 7
             pool = multiprocessing.Pool(processes=process_num)
-            pool.apply_async(self.collectCpu)
-            pool.apply_async(self.collectMemory)
-            pool.apply_async(self.collectMemoryDetail)
-            pool.apply_async(self.collectBattery)
-            pool.apply_async(self.collectFps)
-            pool.apply_async(self.collectNetwork)
-            pool.apply_async(self.collectGpu)
+            def _on_error(err):
+                logger.error(f'采集子进程异常: {err}')
+            pool.apply_async(self.collectCpu, error_callback=_on_error)
+            pool.apply_async(self.collectMemory, error_callback=_on_error)
+            pool.apply_async(self.collectMemoryDetail, error_callback=_on_error)
+            pool.apply_async(self.collectBattery, error_callback=_on_error)
+            pool.apply_async(self.collectFps, error_callback=_on_error)
+            pool.apply_async(self.collectNetwork, error_callback=_on_error)
+            pool.apply_async(self.collectGpu, error_callback=_on_error)
             if self.record:
-                pool.apply_async(Scrcpy.start_record, (self.deviceId))
+                pool.apply_async(Scrcpy.start_record, (self.deviceId,), error_callback=_on_error)
             pool.close()
             pool.join()
             self.setPerfs(report_path=report_path)
