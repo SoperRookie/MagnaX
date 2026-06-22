@@ -4,6 +4,7 @@ import platform
 import re
 import shutil
 import time
+from collections import OrderedDict
 import requests
 from loguru import logger
 from tqdm import tqdm
@@ -28,6 +29,11 @@ except ImportError:
     pmd3_list_devices = None
     PMD3_AVAILABLE = False
 from magnax.public.adb import adb
+
+
+# 生成静态 HTML 报告时图表的最大数据点数（与前端动态图表默认值保持一致）。
+# 超过该值会用 LTTB 降采样，避免长时间采集后报告体积与渲染时间随采集时长线性膨胀。
+REPORT_CHART_MAX_POINTS = 1000
 
 
 def downsample_lttb(data: list, target_points: int) -> list:
@@ -382,6 +388,10 @@ class File:
     def __init__(self, fileroot='.'):
         self.fileroot = fileroot
         self.report_dir = self.get_repordir()
+        # log 文件全量解析缓存：(scene, filename) -> (mtime, log_data_list, target_data_list)
+        # 同一份 log 在均值计算与图表生成中会被多次读取，缓存可避免重复读盘与解析。
+        self._log_cache = OrderedDict()
+        self._log_cache_limit = 32
 
     def _safe_remove_file(self, filepath, max_retries=5, retry_delay=1):
         """安全删除文件，处理文件被占用的情况"""
@@ -660,8 +670,8 @@ class File:
     
     def readJson(self, scene):
         path = os.path.join(self.report_dir,scene,'result.json')
-        result_json = open(file=path, mode='r').read()
-        result_dict = json.loads(result_json)
+        with open(file=path, mode='r') as fp:
+            result_dict = json.loads(fp.read())
         return result_dict
 
     def readLog(self, scene, filename, max_points=0):
@@ -679,34 +689,45 @@ class File:
             - target_data_list: [value, ...]
             - total_points: 原始数据点总数
         """
-        log_data_list = list()
-        target_data_list = list()
-        if os.path.exists(os.path.join(self.report_dir, scene, filename)):
-            lines = self.open_file(os.path.join(self.report_dir, scene, filename), "r")
-            for line in lines:
-                if isinstance(line.split('=')[1].strip(), int):
-                    log_data_list.append({
-                        "x": line.split('=')[0].strip(),
-                        "y": int(line.split('=')[1].strip())
-                    })
-                    target_data_list.append(int(line.split('=')[1].strip()))
-                else:
-                    log_data_list.append({
-                        "x": line.split('=')[0].strip(),
-                        "y": float(line.split('=')[1].strip())
-                    })
-                    target_data_list.append(float(line.split('=')[1].strip()))
+        full_path = os.path.join(self.report_dir, scene, filename)
+        if not os.path.exists(full_path):
+            return list(), list(), 0
+
+        # mtime-aware 缓存：文件未变更时复用全量解析结果，避免同一文件被重复读盘与解析
+        mtime = os.path.getmtime(full_path)
+        cache_key = (scene, filename)
+        cached = self._log_cache.get(cache_key)
+        if cached is not None and cached[0] == mtime:
+            log_data_list, target_data_list = cached[1], cached[2]
+            self._log_cache.move_to_end(cache_key)
+        else:
+            log_data_list, target_data_list = self._parse_log_file(full_path)
+            self._log_cache[cache_key] = (mtime, log_data_list, target_data_list)
+            self._log_cache.move_to_end(cache_key)
+            while len(self._log_cache) > self._log_cache_limit:
+                self._log_cache.popitem(last=False)
 
         # 记录原始数据点数量
         total_points = len(log_data_list)
 
-        # 应用 LTTB 降采样
-        if max_points > 0 and len(log_data_list) > max_points:
+        # 应用 LTTB 降采样（返回新列表，不污染缓存中的全量数据）
+        if max_points > 0 and total_points > max_points:
             log_data_list = downsample_lttb(log_data_list, max_points)
             # 重建 target_data_list
             target_data_list = [item['y'] for item in log_data_list]
 
         return log_data_list, target_data_list, total_points
+
+    def _parse_log_file(self, full_path):
+        """逐行解析单个 log 文件，返回 (log_data_list, target_data_list) 全量数据"""
+        log_data_list = list()
+        target_data_list = list()
+        for line in self.open_file(full_path, "r"):
+            raw = line.split('=')[1].strip()
+            value = int(raw) if isinstance(raw, int) else float(raw)
+            log_data_list.append({"x": line.split('=')[0].strip(), "y": value})
+            target_data_list.append(value)
+        return log_data_list, target_data_list
         
     def getCpuLog(self, platform, scene, max_points=0):
         targetDic = dict()
@@ -1144,10 +1165,11 @@ class File:
     def _setAndroidPerfs(self, scene):
         """Aggregate APM data for Android"""
 
-        app = self.readJson(scene=scene).get('app')
-        devices = self.readJson(scene=scene).get('devices')
-        platform = self.readJson(scene=scene).get('platform')
-        ctime = self.readJson(scene=scene).get('ctime')
+        result_json = self.readJson(scene=scene)
+        app = result_json.get('app')
+        devices = result_json.get('devices')
+        platform = result_json.get('platform')
+        ctime = result_json.get('ctime')
 
         _, cpuAppData, _ = self.readLog(scene=scene, filename=f'cpu_app.log')
         _, cpuSystemData, _ = self.readLog(scene=scene, filename=f'cpu_sys.log')
@@ -1238,10 +1260,11 @@ class File:
     def _setiOSPerfs(self, scene):
         """Aggregate APM data for iOS"""
 
-        app = self.readJson(scene=scene).get('app')
-        devices = self.readJson(scene=scene).get('devices')
-        platform = self.readJson(scene=scene).get('platform')
-        ctime = self.readJson(scene=scene).get('ctime')
+        result_json = self.readJson(scene=scene)
+        app = result_json.get('app')
+        devices = result_json.get('devices')
+        platform = result_json.get('platform')
+        ctime = result_json.get('ctime')
 
         _, cpuAppData, _ = self.readLog(scene=scene, filename=f'cpu_app.log')
         _, cpuSystemData, _ = self.readLog(scene=scene, filename=f'cpu_sys.log')
