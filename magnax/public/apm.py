@@ -1048,6 +1048,9 @@ class iosPerformance(object):
                 return 0.0, 0.0
             else:
                 return 0
+        finally:
+            # 用完即释放 DVT 隧道连接,避免长时间运行连接泄漏拖垮 tunneld
+            self.close()
 
     def close(self):
         """Clean up resources."""
