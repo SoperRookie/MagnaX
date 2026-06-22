@@ -649,7 +649,7 @@ MagnaX - Application Performance Monitoring
                             var app_series = cpu_chart.series[0];
                             var sys_series = cpu_chart.series[1];
                             var x = (new Date()).getTime(),
-                                y_app = data['appCpuRate'];
+                                y_app = data['appCpuRate'],
                                 y_sys = data['systemCpuRate'];
                             app_series.addPoint([x, y_app], true, true);
                             sys_series.addPoint([x, y_sys], true, true);
@@ -775,9 +775,9 @@ MagnaX - Application Performance Monitoring
                                 var seriesVoltage = battery_chart.series[2];
                                 var seriesPower = battery_chart.series[3];
                                 var x = (new Date()).getTime(),
-                                y_temperature = data['temperature'];
-                                y_current = data['current'];
-                                y_voltage = data['voltage'];
+                                y_temperature = data['temperature'],
+                                y_current = data['current'],
+                                y_voltage = data['voltage'],
                                 y_power = data['power'];
                                 seriesTemperature.addPoint([x, y_temperature], true, true);
                                 seriesCurrent.addPoint([x, y_current], true, true);
@@ -909,11 +909,11 @@ MagnaX - Application Performance Monitoring
 
                             var x = (new Date()).getTime(),
                                 y_java = data['memory_detail']['java_heap'],
-                                y_native = data['memory_detail']['native_heap'];
-                                y_code = data['memory_detail']['code_pss'];
-                                y_stack = data['memory_detail']['stack_pss'];
-                                y_graphics = data['memory_detail']['graphics_pss'];
-                                y_private = data['memory_detail']['private_pss'];
+                                y_native = data['memory_detail']['native_heap'],
+                                y_code = data['memory_detail']['code_pss'],
+                                y_stack = data['memory_detail']['stack_pss'],
+                                y_graphics = data['memory_detail']['graphics_pss'],
+                                y_private = data['memory_detail']['private_pss'],
                                 y_system = data['memory_detail']['system_pss'];
                             
                             seriesJava.addPoint([x, y_java], true, true);
@@ -1170,12 +1170,12 @@ MagnaX - Application Performance Monitoring
                             let seriesTotalCost = energy_chart.series[5];
                             let seriesTotalOverhead = energy_chart.series[6];
                             let x = (new Date()).getTime(),
-                                y_GpuCost = data['value']['energy.gpu.cost'];
-                                y_CpuCost = data['value']['energy.cpu.cost'];
-                                y_DisplayCost = data['value']['energy.display.cost'];
-                                y_LocationCost = data['value']['energy.location.cost'];
-                                y_NetworkCost = data['value']['energy.networking.cost'];
-                                y_TotalCost = data['value']['energy.cost'];
+                                y_GpuCost = data['value']['energy.gpu.cost'],
+                                y_CpuCost = data['value']['energy.cpu.cost'],
+                                y_DisplayCost = data['value']['energy.display.cost'],
+                                y_LocationCost = data['value']['energy.location.cost'],
+                                y_NetworkCost = data['value']['energy.networking.cost'],
+                                y_TotalCost = data['value']['energy.cost'],
                                 y_TotalOverhead = data['value']['energy.overhead'];
                             seriesGpuCost.addPoint([x, y_GpuCost], true, true);
                             seriesCpuCost.addPoint([x, y_CpuCost], true, true);
@@ -2313,7 +2313,7 @@ MagnaX - Application Performance Monitoring
             collectDisk(device)
             if(parseInt($('#duration').val()) > 0){
                 var times = parseInt($('#duration').val()) * 60 * 1000
-                setTimeout("stopTask()", times)
+                timers.duration = setTimeout(function(){ stopTask(); }, times)
             }
         }else{
             if(lan == 'cn'){

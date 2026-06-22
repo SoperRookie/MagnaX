@@ -48,10 +48,9 @@ def builtin_adb_path():
     system = platform.system()
     machine = platform.machine()
     adb_path = DEFAULT_ADB_PATH.get('{}-{}'.format(system, machine))
-    proc = subprocess.Popen('adb devices', stdout=subprocess.PIPE, shell=True)
-    result = proc.stdout.read()
-    if not isinstance(result, str):
-        result = str(result, 'utf-8')
+    proc = subprocess.Popen('adb devices', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    out, _ = proc.communicate()
+    result = out.decode('utf-8', errors='ignore') if isinstance(out, bytes) else (out or '')
     if result and "command not found" not in result:
         adb_path = "adb"
         return adb_path

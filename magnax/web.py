@@ -327,7 +327,10 @@ def stop_tunneld():
 atexit.register(stop_tunneld)
 
 
-def main(host=ip(), port=50003):
+def main(host=None, port=50003):
+    # 默认值在导入时即求值,故 ip() 不能作为默认参数(会产生导入期 DNS 解析副作用)
+    if host is None:
+        host = ip()
     # Start tunneld for iOS 17+ devices if needed
     start_tunneld()
 

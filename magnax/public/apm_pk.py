@@ -19,7 +19,10 @@ class CPU_PK:
 
     def getprocessCpuStat(self, pkgName, deviceId):
         """get the cpu usage of a process at a certain time"""
-        pid = pid = d.getPid(pkgName=pkgName, deviceId=deviceId)[0].split(':')[0]
+        pids = d.getPid(pkgName=pkgName, deviceId=deviceId)
+        if not pids:
+            return 0
+        pid = pids[0].split(':')[0]
         cmd = 'cat /proc/{}/stat'.format(pid)
         result = adb.shell(cmd=cmd, deviceId=deviceId)
         r = re.compile("\\s+")
@@ -37,6 +40,8 @@ class CPU_PK:
         lines.pop(0)
         for line in lines:
             toks = line.split()
+            if len(toks) < 8:
+                continue
             if toks[1] in ['', ' ']:
                 toks.pop(1)
             for i in range(1, 8):
@@ -74,8 +79,10 @@ class CPU_PK:
             processCpuTime2_second = self.getprocessCpuStat(pkgName=self.pkgNameList[1], deviceId=self.deviceId2)
             totalCpuTime2_second = self.getTotalCpuStat(deviceId=self.deviceId2)
 
-        appCpuRate1 = round(float((processCpuTime1_second - processCpuTime1_first) / (totalCpuTime1_second - totalCpuTime1_first) * 100), 2)
-        appCpuRate2 = round(float((processCpuTime2_second - processCpuTime2_first) / (totalCpuTime2_second - totalCpuTime2_first) * 100), 2)
+        totalDiff1 = totalCpuTime1_second - totalCpuTime1_first
+        totalDiff2 = totalCpuTime2_second - totalCpuTime2_first
+        appCpuRate1 = round((processCpuTime1_second - processCpuTime1_first) / totalDiff1 * 100, 2) if totalDiff1 else 0.0
+        appCpuRate2 = round((processCpuTime2_second - processCpuTime2_first) / totalDiff2 * 100, 2) if totalDiff2 else 0.0
         apm_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
         f.add_log(os.path.join(f.report_dir, 'cpu_app1.log'), apm_time, appCpuRate1)
         f.add_log(os.path.join(f.report_dir, 'cpu_app2.log'), apm_time, appCpuRate2)
@@ -90,11 +97,14 @@ class MEM_PK:
 
     def getAndroidMemory(self, pkgName, deviceId):
         """Get the Android memory ,unit:MB"""
-        pid = d.getPid(pkgName=pkgName, deviceId=deviceId)[0].split(':')[0]
+        pids = d.getPid(pkgName=pkgName, deviceId=deviceId)
+        if not pids:
+            return 0
+        pid = pids[0].split(':')[0]
         cmd = 'dumpsys meminfo {}'.format(pid)
         output = adb.shell(cmd=cmd, deviceId=deviceId)
         m_total = re.search(r'TOTAL\s*(\d+)', output)
-        totalPass = round(float(float(m_total.group(1))) / 1024, 2)
+        totalPass = round(float(m_total.group(1)) / 1024, 2) if m_total else 0
         return totalPass
 
     def getProcessMemory(self):
@@ -121,17 +131,20 @@ class Flow_PK:
 
     def getAndroidNet(self, pkgName, deviceId):
         """Get Android upflow and downflow data, unit:KB"""
-        pid = d.getPid(pkgName=pkgName, deviceId=deviceId)[0].split(':')[0]
+        pids = d.getPid(pkgName=pkgName, deviceId=deviceId)
+        if not pids:
+            return 0
+        pid = pids[0].split(':')[0]
         cmd = 'cat /proc/{}/net/dev |{} wlan0'.format(pid, d.filterType())
         output_pre = adb.shell(cmd=cmd, deviceId=deviceId)
         m_pre = re.search(r'wlan0:\s*(\d+)\s*\d+\s*\d+\s*\d+\s*\d+\s*\d+\s*\d+\s*\d+\s*(\d+)', output_pre)
-        sendNum_pre = round(float(float(m_pre.group(2)) / 1024), 2)
-        recNum_pre = round(float(float(m_pre.group(1)) / 1024), 2)
+        sendNum_pre = round(float(m_pre.group(2)) / 1024, 2) if m_pre else 0
+        recNum_pre = round(float(m_pre.group(1)) / 1024, 2) if m_pre else 0
         time.sleep(0.5)
         output_final = adb.shell(cmd=cmd, deviceId=deviceId)
         m_final = re.search(r'wlan0:\s*(\d+)\s*\d+\s*\d+\s*\d+\s*\d+\s*\d+\s*\d+\s*\d+\s*(\d+)', output_final)
-        sendNum_final = round(float(float(m_final.group(2)) / 1024), 2)
-        recNum_final = round(float(float(m_final.group(1)) / 1024), 2)
+        sendNum_final = round(float(m_final.group(2)) / 1024, 2) if m_final else 0
+        recNum_final = round(float(m_final.group(1)) / 1024, 2) if m_final else 0
         sendNum = round(float(sendNum_final - sendNum_pre), 2)
         recNum = round(float(recNum_final - recNum_pre), 2)
         network = round(float(sendNum + recNum), 2)

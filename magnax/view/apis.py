@@ -238,6 +238,9 @@ def getCoreCpuRate():
     process = method._request(request, 'process')
     try:
         cores = int(cores)
+    except (ValueError, TypeError):
+        cores = 0
+    try:
         pid = None
         deviceId = d.getIdbyDevice(device, platform)
         if process and platform == Platform.Android :
@@ -291,7 +294,7 @@ def getMemory():
     except Exception as e:
         logger.error('get memory data failed')
         logger.exception(e)
-        result = {'status': 1, 'totalPass': 0, 'nativePass': 0, 'dalvikPass': 0, 'first': 0, 'second': 0}
+        result = {'status': 1, 'totalPass': 0, 'swapPass': 0, 'first': 0, 'second': 0}
     return result
 
 @api.route('/apm/mem/detail', methods=['post', 'get'])
@@ -310,7 +313,7 @@ def getMemoryDetail():
     except Exception as e:
         logger.error('get memory detail data failed')
         logger.exception(e)
-        result = {'status': 1, 'memory_detail': memory_detail}
+        result = {'status': 1, 'memory_detail': {}}
     return result
 
 @api.route('/apm/set/network', methods=['post', 'get'])
@@ -844,7 +847,7 @@ def apmCollect():
                 else:
                     result = {'status': 1, 'temperature': final[0], 'current': final[1], 'voltage': final[2], 'power': final[3]}
             case Target.GPU:
-                gpu = GPU(pkgname=pkgname)
+                gpu = GPU(pkgName=pkgname, deviceId=deviceid, platform=platform)
                 final = gpu.getGPU()
                 result = {'status': 1, 'gpu': final}
             case _:
@@ -858,28 +861,34 @@ def apmCollect():
 def installFile():
     """install apk/ipa from file"""
     platform = method._request(request, 'platform')
-    file = request.files['file']
+    file = request.files.get('file')
+    if file is None:
+        return {'status': 0, 'msg': 'no file uploaded'}
     currentPath = os.path.dirname(os.path.realpath(__file__))
     install = Install()
     unixtime = int(time.time())
-    if platform == Platform.Android:
-        file_path = os.path.join(currentPath, '{}.apk'.format(unixtime))
-        if install.uploadFile(file_path, file):
+    ext = 'apk' if platform == Platform.Android else 'ipa'
+    file_path = os.path.join(currentPath, '{}.{}'.format(unixtime, ext))
+    try:
+        if not install.uploadFile(file_path, file):
+            return {'status': 0, 'msg': 'install file failed'}
+        if platform == Platform.Android:
             install_status = install.installAPK(file_path)
         else:
-            result = {'status': 0, 'msg': 'install file failed'}
-            return result
-    else:
-        file_path = os.path.join(currentPath, '{}.ipa'.format(unixtime))
-        if install.uploadFile(file_path, file):
             install_status = install.installIPA(file_path)
+        if install_status[0]:
+            result = {'status': 1, 'msg': 'install sucess'}
         else:
-            result = {'status': 0, 'msg': 'install file failed'}
-            return result
-    if install_status[0]:
-        result = {'status': 1, 'msg': 'install sucess'}
-    else:
-        result = {'status': 0, 'msg': install_status[1]}
+            result = {'status': 0, 'msg': install_status[1]}
+    except Exception as e:
+        logger.exception(e)
+        result = {'status': 0, 'msg': str(e)}
+    finally:
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
     return result
 
 @api.route('/apm/install/link', methods=['post', 'get'])
@@ -890,24 +899,30 @@ def installLink():
     currentPath = os.path.dirname(os.path.realpath(__file__))
     install = Install()
     unixtime = int(time.time())
-    if platform == Platform.Android:
-        d_status = install.downloadLink(filelink=link, path=currentPath, name='{}.apk'.format(unixtime))
-        if d_status:
-            install_status = install.installAPK(os.path.join(currentPath, '{}.apk'.format(unixtime)))
+    ext = 'apk' if platform == Platform.Android else 'ipa'
+    name = '{}.{}'.format(unixtime, ext)
+    file_path = os.path.join(currentPath, name)
+    try:
+        d_status = install.downloadLink(filelink=link, path=currentPath, name=name)
+        if not d_status:
+            return {'status': 0, 'msg': 'download link failed'}
+        if platform == Platform.Android:
+            install_status = install.installAPK(file_path)
         else:
-            result = {'status': 0, 'msg': 'download link failed'}
-            return result
-    else:
-        d_status = install.downloadLink(filelink=link, path=currentPath, name='{}.ipa'.format(unixtime))
-        if d_status:
-            install_status = install.installIPA(os.path.join(currentPath, '{}.ipa'.format(unixtime)))
+            install_status = install.installIPA(file_path)
+        if install_status[0]:
+            result = {'status': 1, 'msg': 'install sucess'}
         else:
-            result = {'status': 0, 'msg': 'download link failed'}
-            return result
-    if install_status[0]:
-        result = {'status': 1, 'msg': 'install sucess'}
-    else:
-        result = {'status': 0, 'msg': install_status[1]}
+            result = {'status': 0, 'msg': install_status[1]}
+    except Exception as e:
+        logger.exception(e)
+        result = {'status': 0, 'msg': str(e)}
+    finally:
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
     return result
 
 @api.route('/apm/record/start', methods=['post', 'get'])

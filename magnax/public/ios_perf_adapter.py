@@ -156,7 +156,8 @@ class PMD3PerformanceAdapter:
                     logger.info(f"[iOS Perf] Using first tunneld device: {devices[0].udid}")
                     return devices[0]
                 else:
-                    logger.warning("[iOS Perf] tunneld returned no devices")
+                    # 高频建连时 tunneld 偶发瞬时无设备,_ensure_connected 会自动重试,降为 debug 避免刷屏
+                    logger.debug("[iOS Perf] tunneld returned no devices (will retry)")
             except TunneldConnectionError:
                 logger.warning("[iOS Perf] tunneld connection failed - is tunneld running?")
 
@@ -182,7 +183,9 @@ class PMD3PerformanceAdapter:
                     "Or keep tunneld running in background:\n"
                     "  sudo python3 -m pymobiledevice3 remote tunneld"
                 )
-                logger.error(f"[iOS Perf] {self._init_error}")
+                # 瞬时无 rsd 时由上层 _ensure_connected 重试,此处降为 debug 避免刷屏;
+                # 真正持续失败时上层会记录连接错误,采集端也会体现无数据
+                logger.debug(f"[iOS Perf] {self._init_error}")
                 return None
 
             self._rsd = rsd

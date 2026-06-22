@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import platform
@@ -116,13 +117,20 @@ def get_ios_lockdown_client_in_common(device_id):
         logger.error(f"Failed to create lockdown client for device {device_id}: {e}")
         return None
 
+def _pmd3_list_devices_sync():
+    """兼容新旧 pymobiledevice3:新版 list_devices 可能返回协程,需 await 取结果。"""
+    devices = pmd3_list_devices()
+    if asyncio.iscoroutine(devices):
+        devices = asyncio.run(devices)
+    return devices
+
 def get_ios_device_udid_list():
     """获取连接的iOS设备UDID列表"""
     if not PMD3_AVAILABLE:
         logger.warning("pymobiledevice3 not available")
         return []
     try:
-        devices = pmd3_list_devices()
+        devices = _pmd3_list_devices_sync()
         return [device.serial for device in devices]
     except Exception as e:
         logger.error(f"Failed to get iOS device list: {e}")
@@ -169,9 +177,10 @@ class Devices:
     def getDevicesName(self, deviceId):
         """Get the device name of the Android corresponding device ID"""
         try:
-            devices_name = os.popen(f'{self.adb} -s {deviceId} shell getprop ro.product.model').readlines()[0].strip()
+            lines = os.popen(f'{self.adb} -s {deviceId} shell getprop ro.product.model').readlines()
+            devices_name = lines[0].strip() if lines else deviceId
         except Exception:
-            devices_name = os.popen(f'{self.adb} -s {deviceId} shell getprop ro.product.model').buffer.readlines()[0].decode("utf-8").strip()
+            devices_name = deviceId
         return devices_name
 
     def getDevices(self):
@@ -200,8 +209,9 @@ class Devices:
         cmd = 'cat /sys/devices/system/cpu/online'
         result = adb.shell(cmd=cmd, deviceId=deviceId)
         try:
-            nums = int(result.split('-')[1]) + 1
-        except:
+            # online 可能是 "0"、"0-3"、"0,2-7" 等形式,取最大核编号 + 1
+            nums = max(int(n) for n in re.findall(r'\d+', result)) + 1
+        except Exception:
             nums = 1
         return nums
 
@@ -475,7 +485,7 @@ class File:
             html_path = report_path
         else:
             html_path = os.path.join(self.report_dir, scene, 'report.html')   
-        with open(html_path,'w+') as fout:
+        with open(html_path,'w+', encoding='utf-8') as fout:
             html_content = template.render(devices=summary['devices'],app=summary['app'],
                                            platform=summary['platform'],ctime=summary['ctime'],
                                            cpu_app=summary['cpu_app'],cpu_sys=summary['cpu_sys'],
@@ -502,7 +512,7 @@ class File:
             html_path = report_path
         else:
             html_path = os.path.join(self.report_dir, scene, 'report.html')
-        with open(html_path,'w+') as fout:
+        with open(html_path,'w+', encoding='utf-8') as fout:
             html_content = template.render(devices=summary['devices'],app=summary['app'],
                                            platform=summary['platform'],ctime=summary['ctime'],
                                            cpu_app=summary['cpu_app'],cpu_sys=summary['cpu_sys'],gpu=summary['gpu'],
@@ -520,7 +530,8 @@ class File:
     def filter_secen(self, scene):
         dirs = os.listdir(self.report_dir)
         dir_list = list(reversed(sorted(dirs, key=lambda x: os.path.getmtime(os.path.join(self.report_dir, x)))))
-        dir_list.remove(scene)
+        if scene in dir_list:
+            dir_list.remove(scene)
         return dir_list
 
     def get_repordir(self):
@@ -670,7 +681,7 @@ class File:
     
     def readJson(self, scene):
         path = os.path.join(self.report_dir,scene,'result.json')
-        with open(file=path, mode='r') as fp:
+        with open(file=path, mode='r', encoding='utf-8') as fp:
             result_dict = json.loads(fp.read())
         return result_dict
 
@@ -723,9 +734,17 @@ class File:
         log_data_list = list()
         target_data_list = list()
         for line in self.open_file(full_path, "r"):
-            raw = line.split('=')[1].strip()
-            value = int(raw) if isinstance(raw, int) else float(raw)
-            log_data_list.append({"x": line.split('=')[0].strip(), "y": value})
+            if '=' not in line:
+                continue
+            parts = line.split('=')
+            raw = parts[1].strip()
+            if not raw:
+                continue
+            try:
+                value = int(raw) if raw.lstrip('-').isdigit() else float(raw)
+            except ValueError:
+                continue
+            log_data_list.append({"x": parts[0].strip(), "y": value})
             target_data_list.append(value)
         return log_data_list, target_data_list
         
@@ -945,8 +964,8 @@ class File:
             scene1_data, _, scene1_total = self.readLog(scene=scene1, filename='battery_level.log', max_points=max_points)
             scene2_data, _, scene2_total = self.readLog(scene=scene2, filename='battery_level.log', max_points=max_points)
         else:
-            scene1_data, _, scene1_total = self.readLog(scene=scene1, filename='batteryPower.log', max_points=max_points)
-            scene2_data, _, scene2_total = self.readLog(scene=scene2, filename='batteryPower.log', max_points=max_points)
+            scene1_data, _, scene1_total = self.readLog(scene=scene1, filename='battery_power.log', max_points=max_points)
+            scene2_data, _, scene2_total = self.readLog(scene=scene2, filename='battery_power.log', max_points=max_points)
         targetDic['scene1'] = scene1_data
         targetDic['scene2'] = scene2_data
         result = {
@@ -1157,11 +1176,14 @@ class File:
 
         multiple = 1024 if a_kilobyte_is_1024_bytes else 1000
 
+        suffix = suffixes[multiple][0]
         for suffix in suffixes[multiple]:
             size /= multiple
             if size < multiple:
                 return '{0:.2f} {1}'.format(size, suffix)
-    
+        # 超过最大后缀时用最大单位兜底,避免返回 None
+        return '{0:.2f} {1}'.format(size, suffix)
+
     def _setAndroidPerfs(self, scene):
         """Aggregate APM data for Android"""
 
@@ -1193,7 +1215,7 @@ class File:
         if totalPassData.__len__() > 0:
             _, swapPassData, _ = self.readLog(scene=scene, filename=f'mem_swap.log')
             totalPassAvg = f'{round(sum(totalPassData) / len(totalPassData), 2)}MB'
-            swapPassAvg = f'{round(sum(swapPassData) / len(swapPassData), 2)}MB'
+            swapPassAvg = f'{round(sum(swapPassData) / len(swapPassData), 2)}MB' if swapPassData else '0MB'
         else:
             totalPassAvg, swapPassAvg = 0, 0
 
@@ -1250,8 +1272,15 @@ class File:
         apm_dict['cpu_core_flag'] = cpu_core_flag
         
         if thermal_flag:
-            init_thermal_temp = json.loads(open(os.path.join(self.report_dir,scene,'init_thermal_temp.json')).read())
-            current_thermal_temp = json.loads(open(os.path.join(self.report_dir,scene,'current_thermal_temp.json')).read())
+            init_path = os.path.join(self.report_dir, scene, 'init_thermal_temp.json')
+            current_path = os.path.join(self.report_dir, scene, 'current_thermal_temp.json')
+            with open(init_path, encoding='utf-8') as _f:
+                init_thermal_temp = json.loads(_f.read())
+            if os.path.exists(current_path):
+                with open(current_path, encoding='utf-8') as _f:
+                    current_thermal_temp = json.loads(_f.read())
+            else:
+                current_thermal_temp = init_thermal_temp
             apm_dict['init_thermal_temp'] = init_thermal_temp
             apm_dict['current_thermal_temp'] = current_thermal_temp
 
@@ -1300,9 +1329,9 @@ class File:
         _, batteryPowerData, _ = self.readLog(scene=scene, filename='battery_power.log')
         if batteryTemlData.__len__() > 0:
             batteryTeml = int(batteryTemlData[-1])
-            batteryCurrent = int(sum(batteryCurrentData) / len(batteryCurrentData))
-            batteryVoltage = int(sum(batteryVoltageData) / len(batteryVoltageData))
-            batteryPower = int(sum(batteryPowerData) / len(batteryPowerData))
+            batteryCurrent = int(sum(batteryCurrentData) / len(batteryCurrentData)) if batteryCurrentData else 0
+            batteryVoltage = int(sum(batteryVoltageData) / len(batteryVoltageData)) if batteryVoltageData else 0
+            batteryPower = int(sum(batteryPowerData) / len(batteryPowerData)) if batteryPowerData else 0
         else:
             batteryTeml, batteryCurrent, batteryVoltage, batteryPower = 0, 0, 0, 0
 
@@ -1337,19 +1366,19 @@ class File:
     def _setpkPerfs(self, scene):
         """Aggregate APM data for pk model"""
         _, cpuAppData1, _ = self.readLog(scene=scene, filename='cpu_app1.log')
-        cpuAppRate1 = f'{round(sum(cpuAppData1) / len(cpuAppData1), 2)}%'
+        cpuAppRate1 = f'{round(sum(cpuAppData1) / len(cpuAppData1), 2)}%' if cpuAppData1 else '0%'
         _, cpuAppData2, _ = self.readLog(scene=scene, filename='cpu_app2.log')
-        cpuAppRate2 = f'{round(sum(cpuAppData2) / len(cpuAppData2), 2)}%'
+        cpuAppRate2 = f'{round(sum(cpuAppData2) / len(cpuAppData2), 2)}%' if cpuAppData2 else '0%'
 
         _, totalPassData1, _ = self.readLog(scene=scene, filename='mem1.log')
-        totalPassAvg1 = f'{round(sum(totalPassData1) / len(totalPassData1), 2)}MB'
+        totalPassAvg1 = f'{round(sum(totalPassData1) / len(totalPassData1), 2)}MB' if totalPassData1 else '0MB'
         _, totalPassData2, _ = self.readLog(scene=scene, filename='mem2.log')
-        totalPassAvg2 = f'{round(sum(totalPassData2) / len(totalPassData2), 2)}MB'
+        totalPassAvg2 = f'{round(sum(totalPassData2) / len(totalPassData2), 2)}MB' if totalPassData2 else '0MB'
 
         _, fpsData1, _ = self.readLog(scene=scene, filename='fps1.log')
-        fpsAvg1 = f'{int(sum(fpsData1) / len(fpsData1))}HZ/s'
+        fpsAvg1 = f'{int(sum(fpsData1) / len(fpsData1))}HZ/s' if fpsData1 else '0HZ/s'
         _, fpsData2, _ = self.readLog(scene=scene, filename='fps2.log')
-        fpsAvg2 = f'{int(sum(fpsData2) / len(fpsData2))}HZ/s'
+        fpsAvg2 = f'{int(sum(fpsData2) / len(fpsData2))}HZ/s' if fpsData2 else '0HZ/s'
 
         _, networkData1, _ = self.readLog(scene=scene, filename='network1.log')
         network1 = f'{round(float(sum(networkData1) / 1024), 2)}MB'
@@ -1381,15 +1410,10 @@ class Method:
     
     @classmethod   
     def _setValue(cls, value, default = 0):
-        try:
-            result = value
-        except ZeroDivisionError :
-            result = default
-        except IndexError:
-            result = default        
-        except Exception:
-            result = default            
-        return result
+        # 实参在调用前已求值,原 try 无法捕获计算异常;此处仅对 None/无效值做兜底
+        if value is None:
+            return default
+        return value
     
     @classmethod
     def _settings(cls, request):
@@ -1434,11 +1458,11 @@ class Install:
                 total=file_size, initial=0,
                 unit='B', unit_scale=True, desc=filelink.split('/')[-1])
             req = requests.get(filelink, headers=header, stream=True)
-            with(open(os.path.join(path, name), 'ab')) as f:
+            with(open(os.path.join(path, name), 'wb')) as f:
                 for chunk in req.iter_content(chunk_size=1024):
                     if chunk:
                          f.write(chunk)
-                         pbar.update(1024)
+                         pbar.update(len(chunk))
             pbar.close()
             return True
         except Exception as e:
@@ -1464,7 +1488,7 @@ class Install:
 
             # 获取设备列表，如果没有指定设备则使用第一个
             if device_id is None:
-                devices = pmd3_list_devices()
+                devices = _pmd3_list_devices_sync()
                 if not devices:
                     logger.error("No iOS device connected")
                     return False, -1
