@@ -613,7 +613,11 @@ MagnaX - Application Performance Monitoring
         });
     }
 
-    var timerQ = null;
+    var timers = {};
+    function clearAllTimers(){
+        for(var k in timers){ window.clearTimeout(timers[k]); }
+        timers = {};
+    }
 
     function getCpuRate(pkgname,device){
         var process = '';
@@ -632,9 +636,6 @@ MagnaX - Application Performance Monitoring
                 device:device,
                 process:process
             },
-            beforeSend: function () {
-               window.clearTimeout(timerQ);
-            },
             success: function (data) {
                 console.log(data)
                 if(stop == false){
@@ -650,7 +651,7 @@ MagnaX - Application Performance Monitoring
                             if(data['appCpuRate'] == 0 && data['systemCpuRate'] == 0 && platform == 'Android'){
                                 $('.select-pid').empty();
                             }
-                            timerQ = setTimeout(getCpuRate(pkgname,device), 1000);
+                            timers.cpu = setTimeout(function(){ getCpuRate(pkgname,device); }, 1000);
                         }catch (e) {}
                     }else{
                         SwalFire('error','Something error',data['msg'],2000);
@@ -681,9 +682,6 @@ MagnaX - Application Performance Monitoring
                 process:process,
                 cores:parseInt($('#cpu_cores').text())
             },
-            beforeSend: function () {
-               window.clearTimeout(timerQ);
-            },
             success: function (data) {
                 console.log(data)
                 if(stop == false){
@@ -694,7 +692,7 @@ MagnaX - Application Performance Monitoring
                                 console.log(element);
                                 cpucore_chart.series[index].addPoint([x, element], true, true)
                             })
-                            timerQ = setTimeout(getCoreCpuRate(pkgname,device), 1000);
+                            timers.coreCpu = setTimeout(function(){ getCoreCpuRate(pkgname,device); }, 1000);
                         }catch (e) {}
                     }else{
                         SwalFire('error','Something error',data['msg'],2000);
@@ -719,9 +717,6 @@ MagnaX - Application Performance Monitoring
                 pkgname:pkgname,
                 device:device
             },
-            beforeSend: function () {
-               window.clearTimeout(timerQ);
-            },
             success: function (data) {
                 if(stop == false){
                     console.log(data)
@@ -731,7 +726,7 @@ MagnaX - Application Performance Monitoring
                             var x = (new Date()).getTime(),
                             y = data['gpu'];
                             series.addPoint([x, y], true, true);
-                            timerQ = setTimeout(getGpu(pkgname, device), 1000);
+                            timers.gpu = setTimeout(function(){ getGpu(pkgname, device); }, 1000);
                         }catch (e) {}
                     }else{
                         SwalFire('error','Something error',data['msg'],2000);
@@ -754,9 +749,6 @@ MagnaX - Application Performance Monitoring
             data:{
                 platform:platform,
                 device:device
-            },
-            beforeSend: function () {
-               window.clearTimeout(timerQ);
             },
             success: function (data) {
                 if(stop == false){
@@ -787,7 +779,7 @@ MagnaX - Application Performance Monitoring
                                 seriesVoltage.addPoint([x, y_voltage], true, true);
                                 seriesPower.addPoint([x, y_power], true, true);
                             } 
-                            timerQ = setTimeout(getBattery(device), 1000);
+                            timers.battery = setTimeout(function(){ getBattery(device); }, 1000);
                         }catch (e) {}
                     }else{
                         SwalFire('error','Something error',data['msg'],2000);
@@ -818,9 +810,6 @@ MagnaX - Application Performance Monitoring
                 device:device,
                 process:process
             },
-            beforeSend: function () {
-               window.clearTimeout(timerQ);
-            },
             success: function (data) {
                 console.log(data)
                 if(stop == false){
@@ -840,7 +829,7 @@ MagnaX - Application Performance Monitoring
                                     y = data['totalPass'];
                                 series.addPoint([x, y], true, true);
                             }
-                            timerQ = setTimeout(getMemPss(pkgname,device), 1000);
+                            timers.mem = setTimeout(function(){ getMemPss(pkgname,device); }, 1000);
 
                         }catch (e) {}
                     }else{
@@ -867,9 +856,6 @@ MagnaX - Application Performance Monitoring
                 pkgname:pkgname,
                 device:device,
                 process:process
-            },
-            beforeSend: function () {
-               window.clearTimeout(timerQ);
             },
             success: function (data) {
                 console.log(data)
@@ -901,7 +887,7 @@ MagnaX - Application Performance Monitoring
                             seriesPrivate.addPoint([x, y_private], true, true);
                             seriesSystem.addPoint([x, y_system], true, true);
                             
-                            timerQ = setTimeout(getMemDetailPss(pkgname,device), 1000);
+                            timers.memDetail = setTimeout(function(){ getMemDetailPss(pkgname,device); }, 1000);
 
                         }catch (e) {}
                     }else{
@@ -1016,9 +1002,6 @@ MagnaX - Application Performance Monitoring
                 wifi_switch: net_switch,
                 process:process
             },
-            beforeSend: function () {
-               window.clearTimeout(timerQ);
-            },
             success: function (data) {
                 if(stop == false){
                     if(data['status'] == 1){
@@ -1031,7 +1014,7 @@ MagnaX - Application Performance Monitoring
                                 y_down = data['downflow'];
                             seriesUpFlow.addPoint([x_up, y_up], true, true);
                             seriesDownFlow.addPoint([x_down, y_down], true, true);
-                            timerQ = setTimeout(getNetWork(pkgname,device,net_switch), 1000);
+                            timers.net = setTimeout(function(){ getNetWork(pkgname,device,net_switch); }, 1000);
                         }catch (e) {
                             console.log(e)
                         }
@@ -1060,9 +1043,6 @@ MagnaX - Application Performance Monitoring
                 device:device,
                 surv:fps_switch
             },
-            beforeSend: function () {
-               window.clearTimeout(timerQ);
-            },
             success: function (data) {
                 console.log(data)
                 if(stop == false){
@@ -1078,7 +1058,7 @@ MagnaX - Application Performance Monitoring
                                     y_jank = data['jank'];
                                 seriesJank.addPoint([x_jsnk, y_jank], true, true);
                             }
-                            timerQ = setTimeout(getFps(pkgname,device,fps_switch), 1000);
+                            timers.fps = setTimeout(function(){ getFps(pkgname,device,fps_switch); }, 1000);
                         }catch (e) {}
                     }else{
                         SwalFire('error','Something error',data['msg'],2000);
@@ -1102,9 +1082,6 @@ MagnaX - Application Performance Monitoring
                 platform:platform,
                 device:device
             },
-            beforeSend: function () {
-               window.clearTimeout(timerQ);
-            },
             success: function (data) {
                 if(stop == false){
                     if(data['status'] == 1){
@@ -1117,7 +1094,7 @@ MagnaX - Application Performance Monitoring
                                 y_free = data['free'];
                             seriesUsedDisk.addPoint([x_used, y_used], true, true);
                             seriesFreeDisk.addPoint([x_free, y_free], true, true);
-                            timerQ = setTimeout(getDisk(device), 3000);
+                            timers.disk = setTimeout(function(){ getDisk(device); }, 3000);
                         }catch (e) {
                             console.log(e)
                         }
@@ -1143,9 +1120,6 @@ MagnaX - Application Performance Monitoring
                 platform:platform,
                 device:device,
                 pkgname:pkgname
-            },
-            beforeSend: function () {
-               window.clearTimeout(timerQ);
             },
             success: function (data) {
                 if(stop == false){
@@ -1173,7 +1147,7 @@ MagnaX - Application Performance Monitoring
                             seriesNetworkCost.addPoint([x, y_NetworkCost], true, true);
                             seriesTotalCost.addPoint([x, y_TotalCost], true, true);
                             seriesTotalOverhead.addPoint([x, y_TotalOverhead], true, true);
-                            timerQ = setTimeout(getEnergy(pkgname,device), 2000);
+                            timers.energy = setTimeout(function(){ getEnergy(pkgname,device); }, 2000);
                         }catch (e) {
                             console.log(e)
                         }
@@ -2176,7 +2150,7 @@ MagnaX - Application Performance Monitoring
         var thermal_switch = $('#thermal_checkbox').is(':checked')
         $('#run-apm').show();
         $('#stop-apm').hide();
-        window.clearTimeout(timerQ);
+        clearAllTimers();
         var process = '';
         if(platform == 'Android'){
             process = $('.select-pid').val()
@@ -2225,6 +2199,7 @@ MagnaX - Application Performance Monitoring
     
     $('#run-apm').click(function () {
         stop = false;
+        clearAllTimers();
         $('#stop-apm').show();
         $('#run-apm').hide();
         initializeAPM();
