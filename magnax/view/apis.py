@@ -9,7 +9,7 @@ from flask import Blueprint
 from magnax import __version__
 from magnax.public.apm import (CPU, Memory, Network, FPS, Battery, GPU, Energy, Disk,ThermalSensor, Target)
 from magnax.public.apm_pk import (CPU_PK, MEM_PK, Flow_PK, FPS_PK)
-from magnax.public.common import (Devices, File, Method, Install, Platform, Scrcpy)
+from magnax.public.common import (Devices, File, Method, Install, Platform, Scrcpy, REPORT_CHART_MAX_POINTS)
 
 d = Devices()
 f = File()
@@ -630,10 +630,11 @@ def exportAndroidHtml():
     gpu = method._request(request, 'gpu')
     try:
         summary_dict = dict()
-        summary_dict['app'] = f.readJson(scene).get('app')
-        summary_dict['platform'] = f.readJson(scene).get('platform')
-        summary_dict['devices'] = f.readJson(scene).get('devices')
-        summary_dict['ctime'] = f.readJson(scene).get('ctime')
+        result_json = f.readJson(scene)
+        summary_dict['app'] = result_json.get('app')
+        summary_dict['platform'] = result_json.get('platform')
+        summary_dict['devices'] = result_json.get('devices')
+        summary_dict['ctime'] = result_json.get('ctime')
         summary_dict['cpu_app'] = cpu_app
         summary_dict['cpu_sys'] = cpu_sys
         summary_dict['mem_total'] = mem_total
@@ -645,14 +646,15 @@ def exportAndroidHtml():
         summary_dict['net_send'] = net_send
         summary_dict['net_recv'] = net_recv
         summary_dict['gpu'] = gpu
-        summary_dict['cpu_charts'] = f.getCpuLog(Platform.Android, scene)
-        summary_dict['mem_charts'] = f.getMemLog(Platform.Android, scene)
-        summary_dict['mem_detail_charts'] = f.getMemDetailLog(Platform.Android, scene)
-        summary_dict['net_charts'] = f.getFlowLog(Platform.Android, scene)
-        summary_dict['battery_charts'] = f.getBatteryLog(Platform.Android, scene)
-        summary_dict['fps_charts'] = f.getFpsLog(Platform.Android, scene)['fps']
-        summary_dict['jank_charts'] = f.getFpsLog(Platform.Android, scene)['jank']
-        summary_dict['gpu_charts'] = f.getGpuLog(Platform.Android, scene)
+        fps_log = f.getFpsLog(Platform.Android, scene, max_points=REPORT_CHART_MAX_POINTS)
+        summary_dict['cpu_charts'] = f.getCpuLog(Platform.Android, scene, max_points=REPORT_CHART_MAX_POINTS)
+        summary_dict['mem_charts'] = f.getMemLog(Platform.Android, scene, max_points=REPORT_CHART_MAX_POINTS)
+        summary_dict['mem_detail_charts'] = f.getMemDetailLog(Platform.Android, scene, max_points=REPORT_CHART_MAX_POINTS)
+        summary_dict['net_charts'] = f.getFlowLog(Platform.Android, scene, max_points=REPORT_CHART_MAX_POINTS)
+        summary_dict['battery_charts'] = f.getBatteryLog(Platform.Android, scene, max_points=REPORT_CHART_MAX_POINTS)
+        summary_dict['fps_charts'] = fps_log['fps']
+        summary_dict['jank_charts'] = fps_log['jank']
+        summary_dict['gpu_charts'] = f.getGpuLog(Platform.Android, scene, max_points=REPORT_CHART_MAX_POINTS)
         path = f.make_android_html(scene, summary_dict)
         result = {'status': 1, 'msg':'success', 'path':path}
     except Exception as e:
@@ -676,10 +678,11 @@ def exportiOSHtml():
     net_recv = method._request(request, 'net_recv')
     try:
         summary_dict = dict()
-        summary_dict['app'] = f.readJson(scene).get('app')
-        summary_dict['platform'] = f.readJson(scene).get('platform')
-        summary_dict['devices'] = f.readJson(scene).get('devices')
-        summary_dict['ctime'] = f.readJson(scene).get('ctime')
+        result_json = f.readJson(scene)
+        summary_dict['app'] = result_json.get('app')
+        summary_dict['platform'] = result_json.get('platform')
+        summary_dict['devices'] = result_json.get('devices')
+        summary_dict['ctime'] = result_json.get('ctime')
         summary_dict['cpu_app'] = cpu_app
         summary_dict['cpu_sys'] = cpu_sys
         summary_dict['mem_total'] = mem_total
@@ -691,12 +694,12 @@ def exportiOSHtml():
         summary_dict['power'] = power
         summary_dict['net_send'] = net_send
         summary_dict['net_recv'] = net_recv
-        summary_dict['cpu_charts'] = f.getCpuLog(Platform.iOS, scene)
-        summary_dict['mem_charts'] = f.getMemLog(Platform.iOS, scene)
-        summary_dict['net_charts'] = f.getFlowLog(Platform.iOS, scene)
-        summary_dict['battery_charts'] = f.getBatteryLog(Platform.iOS, scene)
-        summary_dict['fps_charts'] = f.getFpsLog(Platform.iOS, scene)
-        summary_dict['gpu_charts'] = f.getGpuLog(Platform.iOS, scene)
+        summary_dict['cpu_charts'] = f.getCpuLog(Platform.iOS, scene, max_points=REPORT_CHART_MAX_POINTS)
+        summary_dict['mem_charts'] = f.getMemLog(Platform.iOS, scene, max_points=REPORT_CHART_MAX_POINTS)
+        summary_dict['net_charts'] = f.getFlowLog(Platform.iOS, scene, max_points=REPORT_CHART_MAX_POINTS)
+        summary_dict['battery_charts'] = f.getBatteryLog(Platform.iOS, scene, max_points=REPORT_CHART_MAX_POINTS)
+        summary_dict['fps_charts'] = f.getFpsLog(Platform.iOS, scene, max_points=REPORT_CHART_MAX_POINTS)
+        summary_dict['gpu_charts'] = f.getGpuLog(Platform.iOS, scene, max_points=REPORT_CHART_MAX_POINTS)
         path = f.make_ios_html(scene, summary_dict)
         result = {'status': 1, 'msg':'success', 'path':path}
     except Exception as e:

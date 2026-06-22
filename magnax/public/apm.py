@@ -23,7 +23,7 @@ except ImportError:
 import multiprocessing
 from magnax.public.ios_perf_adapter import PyiOSDeviceAdapter
 from magnax.public.adb import adb
-from magnax.public.common import Devices, File, Method, Platform, Scrcpy
+from magnax.public.common import Devices, File, Method, Platform, Scrcpy, REPORT_CHART_MAX_POINTS
 from magnax.public.android_fps import FPSMonitor, TimeUtils
 
 d = Devices()
@@ -1232,14 +1232,15 @@ class AppPerformanceMonitor(initPerformanceService):
                 summary_dict['net_send'] = summary['flow_send']
                 summary_dict['net_recv'] = summary['flow_recv']
                 summary_dict['gpu'] = summary['gpu']
-                summary_dict['cpu_charts'] = f.getCpuLog(Platform.Android, scene)
-                summary_dict['mem_charts'] = f.getMemLog(Platform.Android, scene)
-                summary_dict['mem_detail_charts'] = f.getMemDetailLog(Platform.Android, scene)
-                summary_dict['net_charts'] = f.getFlowLog(Platform.Android, scene)
-                summary_dict['battery_charts'] = f.getBatteryLog(Platform.Android, scene)
-                summary_dict['fps_charts'] = f.getFpsLog(Platform.Android, scene)['fps']
-                summary_dict['jank_charts'] = f.getFpsLog(Platform.Android, scene)['jank']
-                summary_dict['gpu_charts'] = f.getGpuLog(Platform.Android, scene)
+                fps_log = f.getFpsLog(Platform.Android, scene, max_points=REPORT_CHART_MAX_POINTS)
+                summary_dict['cpu_charts'] = f.getCpuLog(Platform.Android, scene, max_points=REPORT_CHART_MAX_POINTS)
+                summary_dict['mem_charts'] = f.getMemLog(Platform.Android, scene, max_points=REPORT_CHART_MAX_POINTS)
+                summary_dict['mem_detail_charts'] = f.getMemDetailLog(Platform.Android, scene, max_points=REPORT_CHART_MAX_POINTS)
+                summary_dict['net_charts'] = f.getFlowLog(Platform.Android, scene, max_points=REPORT_CHART_MAX_POINTS)
+                summary_dict['battery_charts'] = f.getBatteryLog(Platform.Android, scene, max_points=REPORT_CHART_MAX_POINTS)
+                summary_dict['fps_charts'] = fps_log['fps']
+                summary_dict['jank_charts'] = fps_log['jank']
+                summary_dict['gpu_charts'] = f.getGpuLog(Platform.Android, scene, max_points=REPORT_CHART_MAX_POINTS)
                 f.make_android_html(scene=scene, summary=summary_dict, report_path=report_path)
             case Platform.iOS:
                 scene = f.make_report(app=self.pkgName, devices=self.deviceId,
@@ -1261,12 +1262,12 @@ class AppPerformanceMonitor(initPerformanceService):
                 summary_dict['gpu'] = summary['gpu']
                 summary_dict['net_send'] = summary['flow_send']
                 summary_dict['net_recv'] = summary['flow_recv']
-                summary_dict['cpu_charts'] = f.getCpuLog(Platform.iOS, scene)
-                summary_dict['mem_charts'] = f.getMemLog(Platform.iOS, scene)
-                summary_dict['net_charts'] = f.getFlowLog(Platform.iOS, scene)
-                summary_dict['battery_charts'] = f.getBatteryLog(Platform.iOS, scene)
-                summary_dict['fps_charts'] = f.getFpsLog(Platform.iOS, scene)
-                summary_dict['gpu_charts'] = f.getGpuLog(Platform.iOS, scene)
+                summary_dict['cpu_charts'] = f.getCpuLog(Platform.iOS, scene, max_points=REPORT_CHART_MAX_POINTS)
+                summary_dict['mem_charts'] = f.getMemLog(Platform.iOS, scene, max_points=REPORT_CHART_MAX_POINTS)
+                summary_dict['net_charts'] = f.getFlowLog(Platform.iOS, scene, max_points=REPORT_CHART_MAX_POINTS)
+                summary_dict['battery_charts'] = f.getBatteryLog(Platform.iOS, scene, max_points=REPORT_CHART_MAX_POINTS)
+                summary_dict['fps_charts'] = f.getFpsLog(Platform.iOS, scene, max_points=REPORT_CHART_MAX_POINTS)
+                summary_dict['gpu_charts'] = f.getGpuLog(Platform.iOS, scene, max_points=REPORT_CHART_MAX_POINTS)
                 f.make_ios_html(scene=scene, summary=summary_dict, report_path=report_path)
             case _:
                 raise Exception('platfrom is invalid')
