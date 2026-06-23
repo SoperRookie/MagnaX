@@ -28,6 +28,13 @@ def index():
     settings = m._settings(request)
     return render_template('index.html', **locals())
 
+@page.route('/h5')
+def h5():
+    lan = request.args.get('lan')
+    platform = 'Android'
+    settings = m._settings(request)
+    return render_template('h5.html', **locals())
+
 @page.route('/pk')
 def pk():
     lan = request.args.get('lan')

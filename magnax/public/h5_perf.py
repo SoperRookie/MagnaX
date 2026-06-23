@@ -84,6 +84,8 @@ class H5PerformanceMonitor(object):
 
     def _pick_ws(self):
         if self.wsUrl:
+            # 直接给了 ws 地址时,仍需确保 adb forward 隧道在(否则 127.0.0.1:port 连不上)
+            self.client._forward()
             return self.wsUrl
         pages = self.client.list_pages()
         if not pages:
