@@ -72,7 +72,7 @@ python -m magnax --host={ip} --port={port}
 ## 🏴󠁣󠁩󠁣󠁭󠁿使用python收集
 
 ```python
-# magnax version : >= 2.9.0
+# magnax version : >= 1.0.0
 from magnax.public.apm import AppPerformanceMonitor
 from magnax.public.common import Devices
 
@@ -118,7 +118,7 @@ initPerformanceService.stop()
 ### 后台启动服务
 
 ```
-# magnax version >= 2.8.7
+# magnax version >= 1.0.0
 
 macOS/Linux: nohup python3 -m magnax &
 Windows: start /min python3 -m magnax &
