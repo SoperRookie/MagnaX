@@ -73,7 +73,7 @@ python -m magnax --host=ip --port=port
 ## 🏴󠁣󠁩󠁣󠁭󠁿Python API
 
 ```python
-# magnax version : >= 2.8.5
+# magnax version : >= 1.0.0
 from magnax.public.apm import AppPerformanceMonitor
 from magnax.public.common import Devices
 
@@ -118,7 +118,7 @@ initPerformanceService.stop() # stop magnax
 ### Start the service in the background
 
 ```
-# magnax version >= 2.1.5
+# magnax version >= 1.0.0
 
 macOS/Linux: nohup python3 -m magnax &
 Windows: start /min python3 -m magnax &
