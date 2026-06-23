@@ -67,6 +67,13 @@ class PMD3PerformanceAdapter:
         sudo python3 -m pymobiledevice3 remote tunneld
     """
 
+    # 网络差分基准值,按 device_id 跨 adapter 实例保持。
+    # netBytesIn/Out 是累积计数器,网速靠两次读数做差分。
+    # 由于"方案B"每次采集后会 close() 销毁 adapter,基准值必须存在类级别才能跨周期保留,
+    # 否则每次都是首读取 -> 差分恒为 0 -> iOS 网络永远抓不到数据。
+    # 结构: {device_id: (rx_bytes, tx_bytes, timestamp)}
+    _net_baseline: Dict[str, Tuple[int, int, float]] = {}
+
     def __init__(self, device_id: str, bundle_id: str):
         self.device_id = device_id
         self.bundle_id = bundle_id
@@ -673,21 +680,25 @@ class PMD3PerformanceAdapter:
         try:
             system_data, _ = self._collect_sysmontap_data()
 
-            if system_data:
+            # 必须确认拿到了 netBytesIn,否则会用 0 当基准值,下次采集算出巨大的假差分
+            if system_data and 'netBytesIn' in system_data:
                 rx_bytes = system_data.get('netBytesIn', 0) or 0
                 tx_bytes = system_data.get('netBytesOut', 0) or 0
                 current_time = time.time()
 
                 logger.debug(f"[iOS Perf] Network raw: rx={rx_bytes}, tx={tx_bytes}")
 
-                if self._cache._last_net_time > 0:
-                    # Calculate delta
-                    time_delta = current_time - self._cache._last_net_time
+                # 基准值存在类级别,跨 adapter 实例保留(方案B每次会销毁 adapter)
+                baseline = PMD3PerformanceAdapter._net_baseline.get(self.device_id)
+                if baseline:
+                    last_rx, last_tx, last_time = baseline
+                    time_delta = current_time - last_time
                     if time_delta > 0:
-                        rx_delta = max(0, rx_bytes - self._cache._last_net_rx_bytes)
-                        tx_delta = max(0, tx_bytes - self._cache._last_net_tx_bytes)
+                        # 设备重启会让累积计数器归零,max(0,...) 防止出现负差分
+                        rx_delta = max(0, rx_bytes - last_rx)
+                        tx_delta = max(0, tx_bytes - last_tx)
 
-                        # Convert to KB/s
+                        # 转成 KB/s
                         self._cache.network_rx_kb = round((rx_delta / 1024) / time_delta, 2)
                         self._cache.network_tx_kb = round((tx_delta / 1024) / time_delta, 2)
 
@@ -695,10 +706,8 @@ class PMD3PerformanceAdapter:
                 else:
                     logger.debug("[iOS Perf] Network: first reading, storing baseline")
 
-                # Store for next delta calculation
-                self._cache._last_net_rx_bytes = rx_bytes
-                self._cache._last_net_tx_bytes = tx_bytes
-                self._cache._last_net_time = current_time
+                # 保存本次读数,供下次采集做差分
+                PMD3PerformanceAdapter._net_baseline[self.device_id] = (rx_bytes, tx_bytes, current_time)
             else:
                 logger.debug("[iOS Perf] Network: no system_data available")
 
