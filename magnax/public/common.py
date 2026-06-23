@@ -105,6 +105,64 @@ def downsample_lttb(data: list, target_points: int) -> list:
     return sampled
 
 
+def _lttb_indices(data: list, target_points: int) -> list:
+    """返回 LTTB 选中的原始索引列表(供多 series 对齐降采样复用)。"""
+    n = len(data)
+    if n <= target_points or target_points < 3:
+        return list(range(n))
+    indices = [0]
+    bucket_size = (n - 2) / (target_points - 2)
+    a = 0
+    for i in range(target_points - 2):
+        bucket_start = int((i + 1) * bucket_size) + 1
+        bucket_end = min(int((i + 2) * bucket_size) + 1, n - 1)
+        next_start = int((i + 2) * bucket_size) + 1
+        next_end = min(int((i + 3) * bucket_size) + 1, n)
+        if next_end > next_start:
+            avg_x = sum(j for j in range(next_start, next_end)) / (next_end - next_start)
+            avg_y = sum(data[j]['y'] for j in range(next_start, next_end)) / (next_end - next_start)
+        else:
+            avg_x = next_start
+            avg_y = data[min(next_start, n - 1)]['y']
+        max_area = -1
+        max_idx = bucket_start
+        for j in range(bucket_start, bucket_end):
+            area = abs(
+                (a - avg_x) * (data[j]['y'] - data[a]['y']) -
+                (a - j) * (avg_y - data[a]['y'])
+            )
+            if area > max_area:
+                max_area = area
+                max_idx = j
+        indices.append(max_idx)
+        a = max_idx
+    indices.append(n - 1)
+    return indices
+
+
+def downsample_lttb_multi(series_list: list, target_points: int) -> list:
+    """对多个等长的同源 series 用统一采样索引降采样。
+
+    多条线来自同一次采集(x 时间戳相同),但若各自独立 LTTB 选点会导致 x 不对齐,
+    多线图(如 iOS 电池的温度/电流/电压/功率)将因坐标错位而画不出线。
+    这里以第一条非空 series 计算 LTTB 索引,应用到所有等长 series,保证 x 对齐。
+    """
+    base = next((s for s in series_list if s), None)
+    if base is None:
+        return series_list
+    n = len(base)
+    if target_points and 0 < target_points < n and target_points >= 3:
+        idx = _lttb_indices(base, target_points)
+    else:
+        idx = list(range(n))
+    base_x = [base[i]['x'] for i in idx]
+    return [
+        [{'x': base_x[k], 'y': s[idx[k]]['y']} for k in range(len(idx))]
+        if len(s) == n else s
+        for s in series_list
+    ]
+
+
 def get_ios_lockdown_client_in_common(device_id):
     """获取iOS设备的lockdown client (common.py专用版本)"""
     try:
@@ -750,8 +808,10 @@ class File:
         
     def getCpuLog(self, platform, scene, max_points=0):
         targetDic = dict()
-        cpu_app_data, _, cpu_app_total = self.readLog(scene=scene, filename='cpu_app.log', max_points=max_points)
-        cpu_sys_data, _, cpu_sys_total = self.readLog(scene=scene, filename='cpu_sys.log', max_points=max_points)
+        cpu_app_data, _, cpu_app_total = self.readLog(scene=scene, filename='cpu_app.log', max_points=0)
+        cpu_sys_data, _, cpu_sys_total = self.readLog(scene=scene, filename='cpu_sys.log', max_points=0)
+        if max_points > 0:
+            cpu_app_data, cpu_sys_data = downsample_lttb_multi([cpu_app_data, cpu_sys_data], max_points)
         targetDic['cpuAppData'] = cpu_app_data
         targetDic['cpuSysData'] = cpu_sys_data
         result = {
@@ -819,17 +879,16 @@ class File:
     
     def getMemLog(self, platform, scene, max_points=0):
         targetDic = dict()
-        mem_total_data, _, mem_total_total = self.readLog(scene=scene, filename='mem_total.log', max_points=max_points)
-        targetDic['memTotalData'] = mem_total_data
-        total_points = mem_total_total
         if platform == Platform.Android:
-            mem_swap_data, _, mem_swap_total = self.readLog(scene=scene, filename='mem_swap.log', max_points=max_points)
-            targetDic['memSwapData'] = mem_swap_data
+            mem_total_data, _, mem_total_total = self.readLog(scene=scene, filename='mem_total.log', max_points=0)
+            mem_swap_data, _, mem_swap_total = self.readLog(scene=scene, filename='mem_swap.log', max_points=0)
+            if max_points > 0:
+                mem_total_data, mem_swap_data = downsample_lttb_multi([mem_total_data, mem_swap_data], max_points)
             total_points = max(mem_total_total, mem_swap_total)
             result = {
                 'status': 1,
-                'memTotalData': targetDic['memTotalData'],
-                'memSwapData': targetDic['memSwapData'],
+                'memTotalData': mem_total_data,
+                'memSwapData': mem_swap_data,
                 'meta': {
                     'sampled': max_points > 0 and total_points > max_points,
                     'max_points': max_points,
@@ -837,9 +896,11 @@ class File:
                 }
             }
         else:
+            mem_total_data, _, mem_total_total = self.readLog(scene=scene, filename='mem_total.log', max_points=max_points)
+            total_points = mem_total_total
             result = {
                 'status': 1,
-                'memTotalData': targetDic['memTotalData'],
+                'memTotalData': mem_total_data,
                 'meta': {
                     'sampled': max_points > 0 and total_points > max_points,
                     'max_points': max_points,
@@ -851,6 +912,7 @@ class File:
     def getMemDetailLog(self, platform, scene, max_points=0):
         targetDic = dict()
         total_points_list = []
+        keys, series = [], []
         for key, filename in [
             ('java_heap', 'mem_java_heap.log'),
             ('native_heap', 'mem_native_heap.log'),
@@ -860,9 +922,14 @@ class File:
             ('private_pss', 'mem_private_pss.log'),
             ('system_pss', 'mem_system_pss.log')
         ]:
-            data, _, total = self.readLog(scene=scene, filename=filename, max_points=max_points)
-            targetDic[key] = data
+            data, _, total = self.readLog(scene=scene, filename=filename, max_points=0)
+            keys.append(key)
+            series.append(data)
             total_points_list.append(total)
+        if max_points > 0:
+            series = downsample_lttb_multi(series, max_points)
+        for key, data in zip(keys, series):
+            targetDic[key] = data
         max_total = max(total_points_list) if total_points_list else 0
         result = {
             'status': 1,
@@ -880,10 +947,16 @@ class File:
         cores = self.readJson(scene=scene).get('cores', 0)
         total_points_list = []
         if int(cores) > 0:
+            keys, series = [], []
             for i in range(int(cores)):
-                data, _, total = self.readLog(scene=scene, filename='cpu{}.log'.format(i), max_points=max_points)
-                targetDic['cpu{}'.format(i)] = data
+                data, _, total = self.readLog(scene=scene, filename='cpu{}.log'.format(i), max_points=0)
+                keys.append('cpu{}'.format(i))
+                series.append(data)
                 total_points_list.append(total)
+            if max_points > 0:
+                series = downsample_lttb_multi(series, max_points)
+            for key, data in zip(keys, series):
+                targetDic[key] = data
         max_total = max(total_points_list) if total_points_list else 0
         result = {
             'status': 1,
@@ -919,8 +992,10 @@ class File:
         targetDic = dict()
         total_points_list = []
         if platform == Platform.Android:
-            level_data, _, level_total = self.readLog(scene=scene, filename='battery_level.log', max_points=max_points)
-            tem_data, _, tem_total = self.readLog(scene=scene, filename='battery_tem.log', max_points=max_points)
+            level_data, _, level_total = self.readLog(scene=scene, filename='battery_level.log', max_points=0)
+            tem_data, _, tem_total = self.readLog(scene=scene, filename='battery_tem.log', max_points=0)
+            if max_points > 0:
+                level_data, tem_data = downsample_lttb_multi([level_data, tem_data], max_points)
             targetDic['batteryLevel'] = level_data
             targetDic['batteryTem'] = tem_data
             total_points_list = [level_total, tem_total]
@@ -935,10 +1010,13 @@ class File:
                 }
             }
         else:
-            tem_data, _, tem_total = self.readLog(scene=scene, filename='battery_tem.log', max_points=max_points)
-            current_data, _, current_total = self.readLog(scene=scene, filename='battery_current.log', max_points=max_points)
-            voltage_data, _, voltage_total = self.readLog(scene=scene, filename='battery_voltage.log', max_points=max_points)
-            power_data, _, power_total = self.readLog(scene=scene, filename='battery_power.log', max_points=max_points)
+            tem_data, _, tem_total = self.readLog(scene=scene, filename='battery_tem.log', max_points=0)
+            current_data, _, current_total = self.readLog(scene=scene, filename='battery_current.log', max_points=0)
+            voltage_data, _, voltage_total = self.readLog(scene=scene, filename='battery_voltage.log', max_points=0)
+            power_data, _, power_total = self.readLog(scene=scene, filename='battery_power.log', max_points=0)
+            if max_points > 0:
+                tem_data, current_data, voltage_data, power_data = downsample_lttb_multi(
+                    [tem_data, current_data, voltage_data, power_data], max_points)
             targetDic['batteryTem'] = tem_data
             targetDic['batteryCurrent'] = current_data
             targetDic['batteryVoltage'] = voltage_data
@@ -982,8 +1060,10 @@ class File:
     
     def getFlowLog(self, platform, scene, max_points=0):
         targetDic = dict()
-        up_data, _, up_total = self.readLog(scene=scene, filename='upflow.log', max_points=max_points)
-        down_data, _, down_total = self.readLog(scene=scene, filename='downflow.log', max_points=max_points)
+        up_data, _, up_total = self.readLog(scene=scene, filename='upflow.log', max_points=0)
+        down_data, _, down_total = self.readLog(scene=scene, filename='downflow.log', max_points=0)
+        if max_points > 0:
+            up_data, down_data = downsample_lttb_multi([up_data, down_data], max_points)
         targetDic['upFlow'] = up_data
         targetDic['downFlow'] = down_data
         max_total = max(up_total, down_total)
@@ -1037,17 +1117,16 @@ class File:
     
     def getFpsLog(self, platform, scene, max_points=0):
         targetDic = dict()
-        fps_data, _, fps_total = self.readLog(scene=scene, filename='fps.log', max_points=max_points)
-        targetDic['fps'] = fps_data
-        total_points = fps_total
         if platform == Platform.Android:
-            jank_data, _, jank_total = self.readLog(scene=scene, filename='jank.log', max_points=max_points)
-            targetDic['jank'] = jank_data
+            fps_data, _, fps_total = self.readLog(scene=scene, filename='fps.log', max_points=0)
+            jank_data, _, jank_total = self.readLog(scene=scene, filename='jank.log', max_points=0)
+            if max_points > 0:
+                fps_data, jank_data = downsample_lttb_multi([fps_data, jank_data], max_points)
             total_points = max(fps_total, jank_total)
             result = {
                 'status': 1,
-                'fps': targetDic['fps'],
-                'jank': targetDic['jank'],
+                'fps': fps_data,
+                'jank': jank_data,
                 'meta': {
                     'sampled': max_points > 0 and total_points > max_points,
                     'max_points': max_points,
@@ -1055,9 +1134,11 @@ class File:
                 }
             }
         else:
+            fps_data, _, fps_total = self.readLog(scene=scene, filename='fps.log', max_points=max_points)
+            total_points = fps_total
             result = {
                 'status': 1,
-                'fps': targetDic['fps'],
+                'fps': fps_data,
                 'meta': {
                     'sampled': max_points > 0 and total_points > max_points,
                     'max_points': max_points,
@@ -1068,8 +1149,10 @@ class File:
     
     def getDiskLog(self, platform, scene, max_points=0):
         targetDic = dict()
-        used_data, _, used_total = self.readLog(scene=scene, filename='disk_used.log', max_points=max_points)
-        free_data, _, free_total = self.readLog(scene=scene, filename='disk_free.log', max_points=max_points)
+        used_data, _, used_total = self.readLog(scene=scene, filename='disk_used.log', max_points=0)
+        free_data, _, free_total = self.readLog(scene=scene, filename='disk_free.log', max_points=0)
+        if max_points > 0:
+            used_data, free_data = downsample_lttb_multi([used_data, free_data], max_points)
         targetDic['used'] = used_data
         targetDic['free'] = free_data
         max_total = max(used_total, free_total)
