@@ -381,6 +381,59 @@ def getNetWorkData():
         result = {'status': 1, 'upflow': 0, 'downflow': 0, 'first': 0, 'second': 0}
     return result
 
+# ====================== H5 性能(安卓 Chrome / CDP) ======================
+@api.route('/device/h5/pages', methods=['post', 'get'])
+def h5Pages():
+    """列出安卓设备 Chrome 里可调试的页面 tab"""
+    device = method._request(request, 'device')
+    try:
+        from magnax.public.cdp_client import CDPClient
+        deviceId = d.getIdbyDevice(device, Platform.Android)
+        pages = CDPClient(deviceId).list_pages()
+        result = {'status': 1, 'pages': [
+            {'title': p.get('title', ''), 'url': p.get('url', ''),
+             'ws': p.get('webSocketDebuggerUrl', '')} for p in pages]}
+    except Exception as e:
+        logger.exception(e)
+        result = {'status': 0, 'msg': str(e)}
+    return result
+
+@api.route('/apm/h5/load', methods=['post', 'get'])
+def h5Load():
+    """reload 页面采集加载类指标(白屏/首屏/FCP/LCP/DCL/Load/CLS)"""
+    device = method._request(request, 'device')
+    url = request.args.get('url') or request.form.get('url')
+    ws = request.args.get('ws') or request.form.get('ws')
+    try:
+        from magnax.public.h5_perf import H5PerformanceMonitor
+        deviceId = d.getIdbyDevice(device, Platform.Android)
+        mon = H5PerformanceMonitor(deviceId, url=url, wsUrl=ws, noLog=False)
+        data = mon.collectLoad(do_reload=True)
+        result = {'status': 1}
+        result.update(data)
+    except Exception as e:
+        logger.exception(e)
+        result = {'status': 0, 'msg': str(e)}
+    return result
+
+@api.route('/apm/h5/runtime', methods=['post', 'get'])
+def h5Runtime():
+    """不 reload,采集运行时指标(JS堆/页面FPS/DOM节点/长任务),用于持续监控出图"""
+    device = method._request(request, 'device')
+    url = request.args.get('url') or request.form.get('url')
+    ws = request.args.get('ws') or request.form.get('ws')
+    try:
+        from magnax.public.h5_perf import H5PerformanceMonitor
+        deviceId = d.getIdbyDevice(device, Platform.Android)
+        mon = H5PerformanceMonitor(deviceId, url=url, wsUrl=ws, noLog=False)
+        data = mon.collectRuntime()
+        result = {'status': 1}
+        result.update(data)
+    except Exception as e:
+        logger.exception(e)
+        result = {'status': 0, 'msg': str(e)}
+    return result
+
 @api.route('/apm/fps', methods=['post', 'get'])
 def getFps():
     """get fps data"""

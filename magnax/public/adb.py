@@ -88,7 +88,19 @@ class ADB(object):
     def shell_noDevice(self, cmd):
         run_cmd = f'{self.adb_path} {cmd}'
         result = os.system(run_cmd)
-        return result    
+        return result
+
+    def forward(self, local_port, remote, deviceId):
+        """adb forward tcp:local_port remote(如 localabstract:chrome_devtools_remote)"""
+        run_cmd = f'{self.adb_path} -s {deviceId} forward tcp:{local_port} {remote}'
+        return subprocess.Popen(run_cmd, shell=True, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE).communicate()[0].decode('utf-8', 'ignore').strip()
+
+    def forward_remove(self, local_port, deviceId):
+        """移除指定本地端口的 forward"""
+        run_cmd = f'{self.adb_path} -s {deviceId} forward --remove tcp:{local_port}'
+        return subprocess.Popen(run_cmd, shell=True, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE).communicate()[0].decode('utf-8', 'ignore').strip()
 
 
 
