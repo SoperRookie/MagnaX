@@ -52,57 +52,8 @@ def downsample_lttb(data: list, target_points: int) -> list:
     n = len(data)
     if n <= target_points or target_points < 3:
         return data
-
-    # 始终保留第一个和最后一个点
-    sampled = [data[0]]
-
-    # 计算每个桶的大小
-    bucket_size = (n - 2) / (target_points - 2)
-
-    a = 0  # 上一个选中点的索引
-
-    for i in range(target_points - 2):
-        # 计算当前桶的范围
-        bucket_start = int((i + 1) * bucket_size) + 1
-        bucket_end = int((i + 2) * bucket_size) + 1
-        bucket_end = min(bucket_end, n - 1)
-
-        # 计算下一个桶的平均值（用于计算三角形面积）
-        next_start = int((i + 2) * bucket_size) + 1
-        next_end = int((i + 3) * bucket_size) + 1
-        next_end = min(next_end, n)
-
-        # 计算下一个桶的平均 x 和 y
-        if next_end > next_start:
-            avg_x = sum(j for j in range(next_start, next_end)) / (next_end - next_start)
-            avg_y = sum(data[j]['y'] for j in range(next_start, next_end)) / (next_end - next_start)
-        else:
-            avg_x = next_start
-            avg_y = data[min(next_start, n - 1)]['y']
-
-        # 在当前桶中找到与上一个点和平均点组成的三角形面积最大的点
-        max_area = -1
-        max_idx = bucket_start
-
-        for j in range(bucket_start, bucket_end):
-            # 计算三角形面积 (使用简化公式)
-            # 面积 = 0.5 * |x1(y2-y3) + x2(y3-y1) + x3(y1-y2)|
-            # 这里使用索引作为 x 坐标的近似
-            area = abs(
-                (a - avg_x) * (data[j]['y'] - data[a]['y']) -
-                (a - j) * (avg_y - data[a]['y'])
-            )
-            if area > max_area:
-                max_area = area
-                max_idx = j
-
-        sampled.append(data[max_idx])
-        a = max_idx
-
-    # 添加最后一个点
-    sampled.append(data[-1])
-
-    return sampled
+    # 复用 _lttb_indices(已对末点重复做去重),避免两份 LTTB 实现各自维护、各自出 bug
+    return [data[i] for i in _lttb_indices(data, target_points)]
 
 
 def _lttb_indices(data: list, target_points: int) -> list:
@@ -137,7 +88,16 @@ def _lttb_indices(data: list, target_points: int) -> list:
         indices.append(max_idx)
         a = max_idx
     indices.append(n - 1)
-    return indices
+    # 末桶 bucket_start 恒为 n-1(因 (target_points-2)*bucket_size == n-2),空桶使 max_idx 默认取 n-1,
+    # 循环内 append 一次、循环后再 append(n-1) 一次 -> 最后一个点被选两次 -> x 重复 ->
+    # ApexCharts category 轴整条序列渲染失败(长时间报告统计图全空)。按序去重修复。
+    seen = set()
+    uniq = []
+    for idx in indices:
+        if idx not in seen:
+            seen.add(idx)
+            uniq.append(idx)
+    return uniq
 
 
 def downsample_lttb_multi(series_list: list, target_points: int) -> list:
