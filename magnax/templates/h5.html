@@ -215,16 +215,16 @@
   function pollNative(){
     var pkg = h5HostPkg();
     if(!pkg) return;  // 留空则不采原生
-    var dev = h5Device();
-    $.ajax({ url: Host + '/apm/cpu', type:'GET', cache:false, timeout:15000,
-      data:{ model:'normal', platform:'Android', pkgname:pkg, device:dev, process:'' },
-      success:function(d){ if(d.status==1){ pushPoint(charts.hcpu, d.appCpuRate, 0); pushPoint(charts.hcpu, d.systemCpuRate, 1); } } });
-    $.ajax({ url: Host + '/apm/gpu', type:'GET', cache:false, timeout:15000,
-      data:{ pkgname:pkg, device:dev, platform:'Android' },
-      success:function(d){ if(d.status==1) pushPoint(charts.hgpu, d.gpu); } });
-    $.ajax({ url: Host + '/apm/battery', type:'GET', cache:false, timeout:15000,
-      data:{ platform:'Android', device:dev },
-      success:function(d){ if(d.status==1) pushPoint(charts.htemp, d.temperature); } });
+    // 单接口采集 CPU/GPU/温度并落 h5_host_*.log(保存报告时一并归档,可回看发热历史)
+    $.ajax({ url: Host + '/apm/h5/host', type:'GET', cache:false, timeout:20000,
+      data:{ device: h5Device(), pkgname: pkg },
+      success:function(d){
+        if(d.status != 1) return;
+        pushPoint(charts.hcpu, d.appCpuRate, 0);
+        pushPoint(charts.hcpu, d.systemCpuRate, 1);
+        pushPoint(charts.hgpu, d.gpu);
+        pushPoint(charts.htemp, d.temperature);
+      } });
   }
 
   function pollRuntime(){

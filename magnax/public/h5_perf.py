@@ -17,7 +17,7 @@ import datetime
 from loguru import logger
 
 from magnax.public.cdp_client import CDPClient, CDPError
-from magnax.public.common import File
+from magnax.public.common import File, Platform
 
 f = File()
 
@@ -214,6 +214,34 @@ class H5PerformanceMonitor(object):
             })
         out.sort(key=lambda x: x['start'])
         return out
+
+    def collectHost(self, pkgname):
+        """采宿主进程原生指标(CPU/GPU/温度)并落 h5_host_*.log,用于发热归因报告。
+        用 noLog=True 抑制原生类自身写 cpu_app.log 等(避免与原生报告日志冲突)。"""
+        from magnax.public.apm import CPU, GPU, Battery
+        appCpu = sysCpu = gpuVal = temp = 0
+        try:
+            appCpu, sysCpu = CPU(pkgName=pkgname, deviceId=self.deviceId,
+                                 platform=Platform.Android).getCpuRate(noLog=True)
+        except Exception as e:
+            logger.warning(f'[H5] 宿主 CPU 采集失败: {e}')
+        try:
+            gpuVal = GPU(pkgName=pkgname, deviceId=self.deviceId,
+                         platform=Platform.Android).getGPU(noLog=True)
+        except Exception as e:
+            logger.warning(f'[H5] 宿主 GPU 采集失败: {e}')
+        try:
+            final = Battery(deviceId=self.deviceId, platform=Platform.Android).getBattery(noLog=True)
+            temp = final[1] if final and len(final) > 1 else 0
+        except Exception as e:
+            logger.warning(f'[H5] 设备温度采集失败: {e}')
+        if not self.noLog:
+            t = self._now()
+            f.add_log(os.path.join(f.report_dir, 'h5_host_cpu_app.log'), t, appCpu)
+            f.add_log(os.path.join(f.report_dir, 'h5_host_cpu_sys.log'), t, sysCpu)
+            f.add_log(os.path.join(f.report_dir, 'h5_host_gpu.log'), t, gpuVal)
+            f.add_log(os.path.join(f.report_dir, 'h5_host_temp.log'), t, temp)
+        return {'appCpuRate': appCpu, 'systemCpuRate': sysCpu, 'gpu': gpuVal, 'temperature': temp}
 
     # ---------- 落日志(复用 File.add_log,格式 time=value) ----------
     def _now(self):

@@ -434,6 +434,23 @@ def h5Runtime():
         result = {'status': 0, 'msg': str(e)}
     return result
 
+@api.route('/apm/h5/host', methods=['post', 'get'])
+def h5Host():
+    """采宿主进程原生指标(CPU/GPU/温度)并落 h5_host_*.log,用于发热归因(进报告)"""
+    device = method._request(request, 'device')
+    pkgname = request.args.get('pkgname') or request.form.get('pkgname')
+    try:
+        from magnax.public.h5_perf import H5PerformanceMonitor
+        deviceId = d.getIdbyDevice(device, Platform.Android)
+        mon = H5PerformanceMonitor(deviceId, noLog=False)
+        data = mon.collectHost(pkgname)
+        result = {'status': 1}
+        result.update(data)
+    except Exception as e:
+        logger.exception(e)
+        result = {'status': 0, 'msg': str(e)}
+    return result
+
 @api.route('/apm/h5/waterfall', methods=['post', 'get'])
 def h5Waterfall():
     """reload 采集资源瀑布流(canvas 游戏页会是空)"""

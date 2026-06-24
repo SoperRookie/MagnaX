@@ -730,6 +730,11 @@ class File:
             'heap': series('h5_heap.log'),
             'nodes': series('h5_nodes.log'),
             'longtask': lt_delta,
+            # 宿主进程原生指标(发热归因);H5-only 会话无这些日志时返回空列表
+            'hostCpuApp': series('h5_host_cpu_app.log'),
+            'hostCpuSys': series('h5_host_cpu_sys.log'),
+            'hostGpu': series('h5_host_gpu.log'),
+            'hostTemp': series('h5_host_temp.log'),
             'load': {
                 'fp': last('h5_fp.log'), 'lcp': last('h5_lcp.log'), 'fcp': last('h5_fcp.log'),
                 'ttfb': last('h5_ttfb.log'), 'dcl': last('h5_dcl.log'), 'load': last('h5_load.log'),

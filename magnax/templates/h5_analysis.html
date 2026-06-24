@@ -44,12 +44,23 @@
     </div>
   </div>
 
-  <!-- 运行时曲线 -->
+  <!-- 运行时曲线: H5 页面层 -->
+  <h3 class="mb-2">{% if lan == 'cn' %}H5 页面层{% else %}H5 layer{% endif %}</h3>
   <div class="row">
     <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-fps" class="h5-chart"></div></div></div></div>
     <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-heap" class="h5-chart"></div></div></div></div>
     <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-nodes" class="h5-chart"></div></div></div></div>
     <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-longtask" class="h5-chart"></div></div></div></div>
+  </div>
+
+  <!-- 运行时曲线: 宿主进程(原生,发热归因);无数据时整段隐藏 -->
+  <div id="host-section" style="display:none;">
+    <h3 class="mb-2">{% if lan == 'cn' %}宿主进程 (原生 · 发热归因){% else %}Host process (native){% endif %}</h3>
+    <div class="row">
+      <div class="col-md-4 mb-3"><div class="card"><div class="card-body"><div id="chart-hcpu" class="h5-chart"></div></div></div></div>
+      <div class="col-md-4 mb-3"><div class="card"><div class="card-body"><div id="chart-hgpu" class="h5-chart"></div></div></div></div>
+      <div class="col-md-4 mb-3"><div class="card"><div class="card-body"><div id="chart-htemp" class="h5-chart"></div></div></div></div>
+    </div>
   </div>
 
 </div>
@@ -71,11 +82,36 @@
     });
   }
 
+  // 宿主 CPU 双线(应用/系统)
+  function mkChart2(id, title, names, colors, cpuApp, cpuSys, suffix){
+    Highcharts.chart(id, {
+      chart:{ type:'line', height:260 },
+      title:{ text:title, style:{ fontSize:'14px' } },
+      credits:{ enabled:false }, legend:{ enabled:true },
+      xAxis:{ categories: cpuApp.map(function(p){return p.x;}), labels:{ enabled:false }, tickLength:0 },
+      yAxis:{ title:{ text:null } },
+      tooltip:{ valueSuffix:suffix },
+      series:[
+        { name:names[0], data: cpuApp.map(function(p){return p.y;}), color:colors[0] },
+        { name:names[1], data: cpuSys.map(function(p){return p.y;}), color:colors[1] }
+      ]
+    });
+  }
+
   $(document).ready(function(){
     mkChart('chart-fps', lan=='cn'?'页面 FPS':'Page FPS', '#2fb344', h5.fps||[], '');
     mkChart('chart-heap', lan=='cn'?'JS堆内存 (MB)':'JS Heap (MB)', '#206bc4', h5.heap||[], ' MB');
     mkChart('chart-nodes', lan=='cn'?'DOM 节点数':'DOM Nodes', '#f59f00', h5.nodes||[], '');
     mkChart('chart-longtask', lan=='cn'?'长任务 (每次新增)':'Long Tasks (new)', '#d63939', h5.longtask||[], '');
+    // 宿主原生:有数据才显示
+    if((h5.hostTemp||[]).length || (h5.hostCpuApp||[]).length){
+      $('#host-section').show();
+      mkChart2('chart-hcpu', lan=='cn'?'宿主 CPU %':'Host CPU %',
+        [lan=='cn'?'应用':'app', lan=='cn'?'系统':'sys'], ['#d63939','#f59f00'],
+        h5.hostCpuApp||[], h5.hostCpuSys||[], ' %');
+      mkChart('chart-hgpu', lan=='cn'?'宿主 GPU %':'Host GPU %', '#ae3ec9', h5.hostGpu||[], ' %');
+      mkChart('chart-htemp', lan=='cn'?'设备温度 ℃':'Temp ℃', '#e8590c', h5.hostTemp||[], ' ℃');
+    }
   });
 </script>
 {% endblock %}
