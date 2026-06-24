@@ -434,6 +434,55 @@ def h5Runtime():
         result = {'status': 0, 'msg': str(e)}
     return result
 
+@api.route('/apm/h5/waterfall', methods=['post', 'get'])
+def h5Waterfall():
+    """reload 采集资源瀑布流(canvas 游戏页会是空)"""
+    device = method._request(request, 'device')
+    url = request.args.get('url') or request.form.get('url')
+    ws = request.args.get('ws') or request.form.get('ws')
+    try:
+        from magnax.public.h5_perf import H5PerformanceMonitor
+        deviceId = d.getIdbyDevice(device, Platform.Android)
+        mon = H5PerformanceMonitor(deviceId, url=url, wsUrl=ws, noLog=True)
+        data = mon.collectWaterfall(do_reload=True)
+        result = {'status': 1}
+        result.update(data)
+    except Exception as e:
+        logger.exception(e)
+        result = {'status': 0, 'msg': str(e)}
+    return result
+
+@api.route('/apm/h5/save', methods=['post', 'get'])
+def h5Save():
+    """保存 H5 报告:把 h5_*.log + result.json 归档进场景目录,进现有报告列表"""
+    device = method._request(request, 'device')
+    url = request.args.get('url') or request.form.get('url') or 'H5'
+    try:
+        f.make_report(app=url, devices=device, video=0, platform='H5', model='h5', cores=0)
+        result = {'status': 1}
+    except Exception as e:
+        logger.exception(e)
+        result = {'status': 0, 'msg': str(e)}
+    return result
+
+@api.route('/apm/h5/screenshot', methods=['post', 'get'])
+def h5Screenshot():
+    """截当前屏(不 reload),返回 jpeg base64"""
+    device = method._request(request, 'device')
+    url = request.args.get('url') or request.form.get('url')
+    ws = request.args.get('ws') or request.form.get('ws')
+    try:
+        from magnax.public.h5_perf import H5PerformanceMonitor
+        deviceId = d.getIdbyDevice(device, Platform.Android)
+        mon = H5PerformanceMonitor(deviceId, url=url, wsUrl=ws, noLog=True)
+        data = mon.collectScreenshot()
+        result = {'status': 1}
+        result.update(data)
+    except Exception as e:
+        logger.exception(e)
+        result = {'status': 0, 'msg': str(e)}
+    return result
+
 @api.route('/apm/fps', methods=['post', 'get'])
 def getFps():
     """get fps data"""

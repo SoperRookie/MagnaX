@@ -103,6 +103,50 @@ class CDPClient(object):
                 return msg
         return None
 
+    def drain_until(self, stop_method, timeout=25, extra_wait=1.0):
+        """持续读消息直到收到 stop_method 事件(或超时),返回期间所有事件。
+        用于 reload 时批量抓 Network.* 事件做瀑布流。extra_wait 为收到停止事件后
+        再多收一会儿,捕获晚到的 loadingFinished。"""
+        events = list(self._event_buf)
+        self._event_buf = []
+        end = time.time() + timeout
+        stopped = False
+        while time.time() < end:
+            try:
+                msg = self._recv(max(0.1, end - time.time()))
+            except Exception:
+                break
+            if 'method' in msg:
+                events.append(msg)
+                if msg['method'] == stop_method:
+                    stopped = True
+                    break
+        if stopped and extra_wait:
+            grace = time.time() + extra_wait
+            while time.time() < grace:
+                try:
+                    msg = self._recv(max(0.1, grace - time.time()))
+                except Exception:
+                    break
+                if 'method' in msg:
+                    events.append(msg)
+        return events
+
+    def drain_duration(self, duration):
+        """固定时长内收集所有事件并返回。比 drain_until 更适合 SPA/游戏
+        (素材常在 loadEventFired 之后才下载)。"""
+        events = list(self._event_buf)
+        self._event_buf = []
+        end = time.time() + duration
+        while time.time() < end:
+            try:
+                msg = self._recv(max(0.1, end - time.time()))
+            except Exception:
+                break
+            if 'method' in msg:
+                events.append(msg)
+        return events
+
     def evaluate(self, expression, return_by_value=True):
         """在页面上下文执行 JS 并取返回值"""
         r = self.call('Runtime.evaluate', {

@@ -142,6 +142,79 @@ class H5PerformanceMonitor(object):
         finally:
             self.client.close()
 
+    def collectWaterfall(self, do_reload=True, capture_seconds=6):
+        """reload 抓资源瀑布流(每个资源 url/类型/状态/起止/耗时/大小)。固定窗口采集
+        capture_seconds 秒,兼顾传统页面与 SPA(素材在 load 后下载)。
+        注意:canvas 游戏(如 Egret)不暴露标准资源加载,瀑布流会是空的。"""
+        self.client.connect(self._pick_ws())
+        try:
+            self.client.call('Page.enable')
+            self.client.call('Network.enable')
+            if do_reload:
+                self.client.call('Page.reload', {'ignoreCache': True})
+                events = self.client.drain_duration(capture_seconds)
+            else:
+                events = []
+            resources = self._build_waterfall(events)
+            return {'resources': resources, 'total': len(resources)}
+        finally:
+            self.client.close()
+
+    def collectScreenshot(self):
+        """截当前屏(不 reload,快且稳),返回 jpeg base64。
+        不调 Page.enable —— 截图不需要它,且它会引发事件洪流干扰应答匹配。"""
+        self.client.connect(self._pick_ws())
+        try:
+            r = self.client.call('Page.captureScreenshot',
+                                 {'format': 'jpeg', 'quality': 60, 'fromSurface': True},
+                                 timeout=20)
+            return {'screenshot': r.get('data', '')}
+        finally:
+            self.client.close()
+
+    @staticmethod
+    def _build_waterfall(events):
+        """把 Network.* 事件聚合成按请求的资源列表"""
+        reqs = {}
+        t0 = None
+        for ev in events:
+            m = ev.get('method')
+            p = ev.get('params', {})
+            rid = p.get('requestId')
+            if m == 'Network.requestWillBeSent':
+                ts = p.get('timestamp', 0)
+                if t0 is None:
+                    t0 = ts
+                req = p.get('request', {})
+                reqs[rid] = {
+                    'url': req.get('url', ''),
+                    'type': p.get('type', 'Other'),
+                    'start': ts, 'end': ts, 'status': 0, 'size': 0, 'failed': False,
+                }
+            elif m == 'Network.responseReceived' and rid in reqs:
+                resp = p.get('response', {})
+                reqs[rid]['status'] = resp.get('status', 0)
+                reqs[rid]['type'] = p.get('type', reqs[rid]['type'])
+            elif m == 'Network.loadingFinished' and rid in reqs:
+                reqs[rid]['end'] = p.get('timestamp', reqs[rid]['end'])
+                reqs[rid]['size'] = int(p.get('encodedDataLength', 0) or 0)
+            elif m == 'Network.loadingFailed' and rid in reqs:
+                reqs[rid]['end'] = p.get('timestamp', reqs[rid]['end'])
+                reqs[rid]['failed'] = True
+        out = []
+        if t0 is None:
+            t0 = 0
+        for r in reqs.values():
+            start_ms = round((r['start'] - t0) * 1000, 1)
+            dur_ms = round((r['end'] - r['start']) * 1000, 1)
+            out.append({
+                'url': r['url'][:160], 'type': r['type'], 'status': r['status'],
+                'start': max(0, start_ms), 'duration': max(0, dur_ms),
+                'size': round(r['size'] / 1024, 2), 'failed': r['failed'],
+            })
+        out.sort(key=lambda x: x['start'])
+        return out
+
     # ---------- 落日志(复用 File.add_log,格式 time=value) ----------
     def _now(self):
         return datetime.datetime.now().strftime('%H:%M:%S.%f')
