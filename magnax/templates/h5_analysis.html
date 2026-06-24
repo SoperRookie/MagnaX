@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+
+{% block title %}MagnaX - H5 {% if lan == 'cn' %}报告{% else %}Report{% endif %}{% endblock %}
+
+{% block css %}
+<style>
+  .h5-stat { text-align:center; padding:14px 6px; }
+  .h5-stat .v { font-size:22px; font-weight:700; }
+  .h5-stat .l { font-size:12px; color:#888; margin-top:4px; }
+  .h5-chart { height:260px; }
+</style>
+{% endblock %}
+
+{% block navbar_nav %}
+<ul class="navbar-nav">
+  <li class="nav-item" style="margin-left:20px;font-weight:bolder;">
+    <a class="nav-link" href="/report?lan={{ lan }}"><span class="nav-link-title">{% if lan == 'cn' %}报告列表{% else %}Reports{% endif %}</span></a>
+  </li>
+</ul>
+{% endblock %}
+
+{% block page_title %}
+<span style="font-weight:bolder;">{% if lan == 'cn' %}H5 报告{% else %}H5 Report{% endif %}</span>
+{% endblock %}
+
+{% block page_body %}
+<div class="container-xl">
+
+  <div class="card mb-3"><div class="card-body">
+    <div><strong>{% if lan == 'cn' %}页面{% else %}URL{% endif %}:</strong> <span style="word-break:break-all;">{{ h5_data.app }}</span></div>
+    <div><strong>{% if lan == 'cn' %}设备{% else %}Device{% endif %}:</strong> {{ h5_data.devices }} &nbsp;&nbsp; <strong>{% if lan == 'cn' %}时间{% else %}Time{% endif %}:</strong> {{ h5_data.ctime }}</div>
+  </div></div>
+
+  <!-- 加载成绩单 -->
+  <div class="card mb-3">
+    <div class="card-header"><h3 class="card-title">{% if lan == 'cn' %}加载性能 (白屏=FP, 首屏=LCP){% else %}Load{% endif %}</h3></div>
+    <div class="card-body row">
+      <div class="col h5-stat"><div class="v">{{ h5_data.load.fp }}</div><div class="l">{% if lan == 'cn' %}白屏 FP (ms){% else %}White FP{% endif %}</div></div>
+      <div class="col h5-stat"><div class="v">{{ h5_data.load.lcp }}</div><div class="l">{% if lan == 'cn' %}首屏 LCP (ms){% else %}First LCP{% endif %}</div></div>
+      <div class="col h5-stat"><div class="v">{{ h5_data.load.fcp }}</div><div class="l">FCP (ms)</div></div>
+      <div class="col h5-stat"><div class="v">{{ h5_data.load.ttfb }}</div><div class="l">TTFB (ms)</div></div>
+      <div class="col h5-stat"><div class="v">{{ h5_data.load.dcl }}</div><div class="l">DCL (ms)</div></div>
+      <div class="col h5-stat"><div class="v">{{ h5_data.load.load }}</div><div class="l">Load (ms)</div></div>
+    </div>
+  </div>
+
+  <!-- 运行时曲线 -->
+  <div class="row">
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-fps" class="h5-chart"></div></div></div></div>
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-heap" class="h5-chart"></div></div></div></div>
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-nodes" class="h5-chart"></div></div></div></div>
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-longtask" class="h5-chart"></div></div></div></div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block js %}
+<script>
+  var h5 = {{ h5_data | tojson }};
+
+  function mkChart(id, title, color, points, suffix){
+    Highcharts.chart(id, {
+      chart:{ type:'line', height:260 },
+      title:{ text:title, style:{ fontSize:'14px' } },
+      credits:{ enabled:false }, legend:{ enabled:false },
+      xAxis:{ categories: points.map(function(p){return p.x;}), labels:{ enabled:false }, tickLength:0 },
+      yAxis:{ title:{ text:null } },
+      tooltip:{ valueSuffix:suffix },
+      series:[{ name:title, data: points.map(function(p){return p.y;}), color:color }]
+    });
+  }
+
+  $(document).ready(function(){
+    mkChart('chart-fps', lan=='cn'?'页面 FPS':'Page FPS', '#2fb344', h5.fps||[], '');
+    mkChart('chart-heap', lan=='cn'?'JS堆内存 (MB)':'JS Heap (MB)', '#206bc4', h5.heap||[], ' MB');
+    mkChart('chart-nodes', lan=='cn'?'DOM 节点数':'DOM Nodes', '#f59f00', h5.nodes||[], '');
+    mkChart('chart-longtask', lan=='cn'?'长任务 (每次新增)':'Long Tasks (new)', '#d63939', h5.longtask||[], '');
+  });
+</script>
+{% endblock %}

@@ -703,6 +703,39 @@ class File:
             result_dict = json.loads(fp.read())
         return result_dict
 
+    def _setH5Perfs(self, scene):
+        """聚合 H5 报告数据:运行时曲线(fps/heap/nodes/longtask) + 加载成绩单(取各日志末值)"""
+        result_json = self.readJson(scene=scene)
+
+        def series(fname):
+            data, _, _ = self.readLog(scene=scene, filename=fname)
+            return data  # [{x,y}]
+
+        def last(fname):
+            _, vals, _ = self.readLog(scene=scene, filename=fname)
+            return vals[-1] if vals else 0
+
+        # 长任务日志存的是累计值,报告里换算成"每次新增"(与实时页一致)
+        lt_delta, prev = [], None
+        for pt in series('h5_longtask.log'):
+            cur = pt['y']
+            lt_delta.append({'x': pt['x'], 'y': 0 if (prev is None or cur < prev) else cur - prev})
+            prev = cur
+
+        return {
+            'app': result_json.get('app'),
+            'devices': result_json.get('devices'),
+            'ctime': result_json.get('ctime'),
+            'fps': series('h5_pagefps.log'),
+            'heap': series('h5_heap.log'),
+            'nodes': series('h5_nodes.log'),
+            'longtask': lt_delta,
+            'load': {
+                'fp': last('h5_fp.log'), 'lcp': last('h5_lcp.log'), 'fcp': last('h5_fcp.log'),
+                'ttfb': last('h5_ttfb.log'), 'dcl': last('h5_dcl.log'), 'load': last('h5_load.log'),
+            },
+        }
+
     def readLog(self, scene, filename, max_points=0):
         """
         Read apmlog file data with optional downsampling
