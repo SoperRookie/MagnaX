@@ -197,7 +197,8 @@ class H5PerformanceMonitor(object):
                 self.client.call('Page.reload', {'ignoreCache': True})
                 events = self.client.drain_duration(capture_seconds)
             else:
-                events = []
+                # 不 reload:抓本窗口内"当前正在加载"的网络活动(实时模式,不打断页面)
+                events = self.client.drain_duration(capture_seconds)
             resources = self._build_waterfall(events)
             # 落盘最近一次瀑布流,保存报告时归档(make_report 搬 .json),供报告页展示
             try:

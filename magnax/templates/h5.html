@@ -121,9 +121,13 @@
 
   <!-- 资源瀑布流(reload 采集;canvas 游戏页通常为空) -->
   <div class="card mb-3"><div class="card-body">
-    <div class="mb-2">
-      <button class="btn btn-primary" onclick="collectWaterfall()">{% if lan == 'cn' %}采集资源瀑布流{% else %}Waterfall{% endif %}</button>
-      <span class="text-muted ms-2" style="font-size:12px;">{% if lan == 'cn' %}reload 抓资源加载;条形悬停看 DNS/连接/TLS/TTFB/下载 分解{% else %}reload & capture; hover bar for phases{% endif %}</span>
+    <div class="mb-2 d-flex align-items-center flex-wrap">
+      <button class="btn btn-primary" onclick="collectWaterfall()">{% if lan == 'cn' %}采集一次 (reload){% else %}Waterfall{% endif %}</button>
+      <label class="form-check form-switch mb-0 ms-3">
+        <input id="wf-live" class="form-check-input" type="checkbox">
+        <span class="form-check-label">{% if lan == 'cn' %}随监控实时 (不reload,抓当前活动){% else %}Live{% endif %}</span>
+      </label>
+      <span class="text-muted ms-3" style="font-size:12px;">{% if lan == 'cn' %}条形悬停看 DNS/连接/TLS/TTFB/下载 分解{% else %}hover bar for phases{% endif %}</span>
     </div>
     <div class="table-responsive"><table class="table table-sm table-vcenter">
       <thead><tr><th>#</th><th>{% if lan == 'cn' %}资源{% else %}Resource{% endif %}</th><th>{% if lan == 'cn' %}类型{% else %}Type{% endif %}</th><th>{% if lan == 'cn' %}状态{% else %}Status{% endif %}</th><th>{% if lan == 'cn' %}大小{% else %}Size{% endif %}</th><th style="width:38%">{% if lan == 'cn' %}瀑布{% else %}Waterfall{% endif %}</th><th>{% if lan == 'cn' %}总(ms){% else %}Total{% endif %}</th></tr></thead>
@@ -373,6 +377,7 @@
     h5Running = true;
     pollRuntime();  // 自配速:每次轮询在 complete 里排下一次,不会堆积
     if($('#h5-prof-live').is(':checked')){ runProfile(true); }  // 勾选则随监控滚动剖析
+    if($('#wf-live').is(':checked')){ runWaterfall(true); }     // 勾选则随监控滚动抓网络活动
   }
 
   function stopMonitor(){
@@ -414,16 +419,29 @@
     });
     $('#'+tbodyId).html(rows);
   }
-  function collectWaterfall(){
-    if(!h5Ws()){ SwalFire('warning', lan=='cn'?'请选择页面':'Select a page', '', 3000); return; }
+  var h5Wfing = false;  // 防止瀑布流采集重叠
+  // rolling=true: 随监控滚动抓当前网络活动(不reload); false: 手动reload完整采集
+  function runWaterfall(rolling){
+    if(h5Wfing) return;
+    if(!h5Ws()){ if(!rolling) SwalFire('warning', lan=='cn'?'请选择页面':'Select a page', '', 3000); return; }
+    h5Wfing = true;
     $.ajax({
-      url: Host+'/apm/h5/waterfall', type:'GET', cache:false, timeout:30000,
-      data:{ device:h5Device(), ws:h5Ws(), socket:h5Socket() },
-      beforeSend:function(){ SwalLoading(lan=='cn'?'采集中':'Collecting', lan=='cn'?'reload 抓资源瀑布流...':'Reloading...'); },
-      success:function(d){ swal.close(); if(d.status!=1){ SwalFire('error', lan=='cn'?'采集失败':'Failed', d.msg||'', 5000); return; } renderWaterfall(d.resources, 'wf-body'); },
-      error:function(){ swal.close(); SwalFire('error','Server Error','',4000); }
+      url: Host+'/apm/h5/waterfall', type:'GET', cache:false, timeout: rolling?15000:35000,
+      data:{ device:h5Device(), ws:h5Ws(), socket:h5Socket(), reload: rolling?'false':'true', seconds: rolling?3:6 },
+      beforeSend:function(){ if(!rolling) SwalLoading(lan=='cn'?'采集中':'Collecting', lan=='cn'?'reload 抓资源瀑布流...':'Reloading...'); },
+      success:function(d){
+        if(d.status==1){ renderWaterfall(d.resources, 'wf-body'); }
+        else if(!rolling){ SwalFire('error', lan=='cn'?'采集失败':'Failed', d.msg||'', 5000); }
+      },
+      error:function(){ if(!rolling) SwalFire('error','Server Error','',4000); },
+      complete:function(){
+        if(!rolling) swal.close();
+        h5Wfing = false;
+        if(rolling && h5Running && $('#wf-live').is(':checked')){ setTimeout(function(){ runWaterfall(true); }, 200); }
+      }
     });
   }
+  function collectWaterfall(){ runWaterfall(false); }  // 手动 reload 完整采集
 
   // JS 热点剖析:剖析 N 秒 -> 列出最耗 CPU 的函数
   var h5Profiling = false;  // 防止剖析重叠(手动/滚动共用一把锁)
@@ -471,6 +489,10 @@
     // 监控进行中勾上"实时剖析"时,立即开始滚动剖析
     $('#h5-prof-live').on('change', function(){
       if($(this).is(':checked') && h5Running && !h5Profiling){ runProfile(true); }
+    });
+    // 监控进行中勾上"瀑布流实时"时,立即开始滚动抓取
+    $('#wf-live').on('change', function(){
+      if($(this).is(':checked') && h5Running && !h5Wfing){ runWaterfall(true); }
     });
     initH5Env();
   });

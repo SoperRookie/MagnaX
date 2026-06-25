@@ -489,16 +489,19 @@ def h5Profile():
 
 @api.route('/apm/h5/waterfall', methods=['post', 'get'])
 def h5Waterfall():
-    """reload 采集资源瀑布流(canvas 游戏页会是空)"""
+    """资源瀑布流。reload=true(默认):reload抓完整加载;reload=false:不reload抓当前
+    网络活动(实时模式,不打断页面)。独立端口9335,与运行时9333/剖析9334隔离可并发。"""
     device = method._request(request, 'device')
     url = request.args.get('url') or request.form.get('url')
     ws = request.args.get('ws') or request.form.get('ws')
     socket = request.args.get('socket') or request.form.get('socket')
+    do_reload = (request.args.get('reload') or request.form.get('reload') or 'true') != 'false'
+    seconds = request.args.get('seconds', 6 if do_reload else 3, type=int)
     try:
         from magnax.public.h5_perf import H5PerformanceMonitor
         deviceId = d.getIdbyDevice(device, Platform.Android)
-        mon = H5PerformanceMonitor(deviceId, url=url, wsUrl=ws, noLog=True, socket=socket)
-        data = mon.collectWaterfall(do_reload=True)
+        mon = H5PerformanceMonitor(deviceId, url=url, wsUrl=ws, noLog=True, socket=socket, local_port=9335)
+        data = mon.collectWaterfall(do_reload=do_reload, capture_seconds=seconds)
         result = {'status': 1}
         result.update(data)
     except Exception as e:
