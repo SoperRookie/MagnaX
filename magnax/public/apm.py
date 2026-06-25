@@ -816,6 +816,44 @@ class ThermalSensor(object):
         self.deviceId = deviceId
         self.platform = platform
 
+    def getSurfaceTemp(self):
+        """读最接近手感的'表层温度'(机身外壳/skin),比电池温度更贴近实际发热。
+        一次 adb 调用拿全部 thermal_zone 的 type=temp(配对输出,免错位),按优先级选:
+        外壳 shell > skin > 含skin/shell名 > CPU 簇最大值。单位 ℃,取不到返回 None。"""
+        try:
+            # 双 glob 分别读 type/temp 再 zip(与 getThermalType 同款写法,能穿透到设备;
+            # 不能用 for+$()的 shell 循环——adb.shell 是本地 shell=True,会被本地 shell 吃掉)
+            types = adb.shell(cmd='cat /sys/class/thermal/thermal_zone*/type',
+                              deviceId=self.deviceId).splitlines()
+            temps = adb.shell(cmd='cat /sys/class/thermal/thermal_zone*/temp',
+                              deviceId=self.deviceId).splitlines()
+            zones = {}
+            for t, v in zip(types, temps):
+                try:
+                    zones[t.strip().lower()] = int(v.strip())
+                except Exception:
+                    continue
+            if not zones:
+                return None
+            # 1. 精确命中外壳/表层传感器(最贴手感)
+            for key in ('shell_back', 'shell_front', 'shell_frame',
+                        'skin-therm-usr', 'skin-msm-therm-usr', 'sys-therm', 'quiet-therm'):
+                if key in zones and zones[key] > 0:
+                    return round(zones[key] / 1000.0, 1)
+            # 2. 名字含 skin/shell 的任意有效传感器
+            for name, v in zones.items():
+                if ('skin' in name or 'shell' in name) and v > 0:
+                    return round(v / 1000.0, 1)
+            # 3. 兜底:CPU 簇最大温度(发热源头)
+            cpu_vals = [v for n, v in zones.items()
+                        if n.startswith('cpu-') and n.endswith('-usr') and v > 0]
+            if cpu_vals:
+                return round(max(cpu_vals) / 1000.0, 1)
+            return None
+        except Exception as e:
+            logger.warning(f'[Thermal] 读表层温度失败: {e}')
+            return None
+
     def setInitalThermalTemp(self):
         temp_list = list()
         typeLength = len(self.getThermalType())

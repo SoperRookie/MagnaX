@@ -218,7 +218,7 @@ class H5PerformanceMonitor(object):
     def collectHost(self, pkgname):
         """采宿主进程原生指标(CPU/GPU/温度)并落 h5_host_*.log,用于发热归因报告。
         用 noLog=True 抑制原生类自身写 cpu_app.log 等(避免与原生报告日志冲突)。"""
-        from magnax.public.apm import CPU, GPU, Battery
+        from magnax.public.apm import CPU, GPU, Battery, ThermalSensor
         appCpu = sysCpu = gpuVal = temp = 0
         try:
             appCpu, sysCpu = CPU(pkgName=pkgname, deviceId=self.deviceId,
@@ -231,10 +231,13 @@ class H5PerformanceMonitor(object):
         except Exception as e:
             logger.warning(f'[H5] 宿主 GPU 采集失败: {e}')
         try:
-            final = Battery(deviceId=self.deviceId, platform=Platform.Android).getBattery(noLog=True)
-            temp = final[1] if final and len(final) > 1 else 0
+            # 优先表层温度(机身外壳/skin,最贴手感),取不到再退回电池温度
+            temp = ThermalSensor(self.deviceId).getSurfaceTemp()
+            if temp is None:
+                final = Battery(deviceId=self.deviceId, platform=Platform.Android).getBattery(noLog=True)
+                temp = final[1] if final and len(final) > 1 else 0
         except Exception as e:
-            logger.warning(f'[H5] 设备温度采集失败: {e}')
+            logger.warning(f'[H5] 温度采集失败: {e}')
         if not self.noLog:
             t = self._now()
             f.add_log(os.path.join(f.report_dir, 'h5_host_cpu_app.log'), t, appCpu)

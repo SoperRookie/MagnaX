@@ -656,15 +656,16 @@ MagnaX - Application Performance Monitoring
                             if(data['appCpuRate'] == 0 && data['systemCpuRate'] == 0 && platform == 'Android'){
                                 $('.select-pid').empty();
                             }
-                            timers.cpu = setTimeout(function(){ getCpuRate(pkgname,device); }, 1000);
                         }catch (e) {}
                     }else{
-                        SwalFire('error','Something error',data['msg'],2000);
+                        console.log('cpu collect error:', data['msg']);
                     }
                 }
             },
+            complete: function(){
+                if(stop == false){ timers.cpu = setTimeout(function(){ getCpuRate(pkgname,device); }, 1000); }
+            },
             error: function(error){
-                SwalFire('error','Server Error','Please press [ctrl+shift+i] and provide the browser\'s error message',5000);
                 console.log(error);
             }
         });
@@ -697,15 +698,16 @@ MagnaX - Application Performance Monitoring
                                 console.log(element);
                                 cpucore_chart.series[index].addPoint([x, element], true, true)
                             })
-                            timers.coreCpu = setTimeout(function(){ getCoreCpuRate(pkgname,device); }, 1000);
                         }catch (e) {}
                     }else{
-                        SwalFire('error','Something error',data['msg'],2000);
+                        console.log('coreCpu collect error:', data['msg']);
                     }
                 }
             },
+            complete: function(){
+                if(stop == false){ timers.coreCpu = setTimeout(function(){ getCoreCpuRate(pkgname,device); }, 1000); }
+            },
             error: function(error){
-                SwalFire('error','Server Error','Please press [ctrl+shift+i] and provide the browser\'s error message',5000);
                 console.log(error);
             }
         });
@@ -731,15 +733,16 @@ MagnaX - Application Performance Monitoring
                             var x = (new Date()).getTime(),
                             y = data['gpu'];
                             series.addPoint([x, y], true, true);
-                            timers.gpu = setTimeout(function(){ getGpu(pkgname, device); }, 1000);
                         }catch (e) {}
                     }else{
-                        SwalFire('error','Something error',data['msg'],2000);
+                        console.log('gpu collect error:', data['msg']);
                     }
                 }
             },
+            complete: function(){
+                if(stop == false){ timers.gpu = setTimeout(function(){ getGpu(pkgname, device); }, 1000); }
+            },
             error: function(error){
-                SwalFire('error','Server Error','Please press [ctrl+shift+i] and provide the browser\'s error message',5000);
                 console.log(error);
             }
         });
@@ -784,15 +787,16 @@ MagnaX - Application Performance Monitoring
                                 seriesVoltage.addPoint([x, y_voltage], true, true);
                                 seriesPower.addPoint([x, y_power], true, true);
                             } 
-                            timers.battery = setTimeout(function(){ getBattery(device); }, 1000);
                         }catch (e) {}
                     }else{
-                        SwalFire('error','Something error',data['msg'],2000);
+                        console.log('battery collect error:', data['msg']);
                     }
                 }
             },
+            complete: function(){
+                if(stop == false){ timers.battery = setTimeout(function(){ getBattery(device); }, 1000); }
+            },
             error: function(error){
-                SwalFire('error','Server Error','Please press [ctrl+shift+i] and provide the browser\'s error message',5000);
                 console.log(error);
             }
         });
@@ -816,15 +820,17 @@ MagnaX - Application Performance Monitoring
                             var x = (new Date()).getTime(),
                                 y = data['temperature'];
                             series.addPoint([x, y], true, true);
-                            timers.temperature = setTimeout(function(){ getTemperature(device); }, 1000);
                         }catch (e) {}
                     }else{
-                        SwalFire('error','Something error',data['msg'],2000);
+                        console.log('temperature collect error:', data['msg']);
                     }
                 }
             },
+            complete: function(){
+                // 排期放在 complete:成功/失败/异常都会执行,单次抖动不再断链卡死
+                if(stop == false){ timers.temperature = setTimeout(function(){ getTemperature(device); }, 1000); }
+            },
             error: function(error){
-                SwalFire('error','Server Error','Please press [ctrl+shift+i] and provide the browser\'s error message',5000);
                 console.log(error);
             }
         });
@@ -866,16 +872,16 @@ MagnaX - Application Performance Monitoring
                                     y = data['totalPass'];
                                 series.addPoint([x, y], true, true);
                             }
-                            timers.mem = setTimeout(function(){ getMemPss(pkgname,device); }, 1000);
-
                         }catch (e) {}
                     }else{
-                        SwalFire('error','Something error',data['msg'],2000);
+                        console.log('mem collect error:', data['msg']);
                     }
                 }
             },
+            complete: function(){
+                if(stop == false){ timers.mem = setTimeout(function(){ getMemPss(pkgname,device); }, 1000); }
+            },
             error: function(error){
-                SwalFire('error','Server Error','Please press [ctrl+shift+i] and provide the browser\'s error message',5000);
                 console.log(error);
             }
         });
@@ -924,16 +930,16 @@ MagnaX - Application Performance Monitoring
                             seriesPrivate.addPoint([x, y_private], true, true);
                             seriesSystem.addPoint([x, y_system], true, true);
                             
-                            timers.memDetail = setTimeout(function(){ getMemDetailPss(pkgname,device); }, 1000);
-
                         }catch (e) {}
                     }else{
-                        SwalFire('error','Something error',data['msg'],2000);
+                        console.log('memDetail collect error:', data['msg']);
                     }
                 }
             },
+            complete: function(){
+                if(stop == false){ timers.memDetail = setTimeout(function(){ getMemDetailPss(pkgname,device); }, 1000); }
+            },
             error: function(error){
-                SwalFire('error','Server Error','Please press [ctrl+shift+i] and provide the browser\'s error message',5000);
                 console.log(error);
             }
         });
@@ -1051,17 +1057,18 @@ MagnaX - Application Performance Monitoring
                                 y_down = data['downflow'];
                             seriesUpFlow.addPoint([x_up, y_up], true, true);
                             seriesDownFlow.addPoint([x_down, y_down], true, true);
-                            timers.net = setTimeout(function(){ getNetWork(pkgname,device,net_switch); }, 1000);
                         }catch (e) {
                             console.log(e)
                         }
                     }else{
-                        SwalFire('error','Something error',data['msg'],2000);
+                        console.log('net collect error:', data['msg']);
                     }
                 }
             },
+            complete: function(){
+                if(stop == false){ timers.net = setTimeout(function(){ getNetWork(pkgname,device,net_switch); }, 1000); }
+            },
             error: function(error){
-                SwalFire('error','Server Error','Please press [ctrl+shift+i] and provide the browser\'s error message',5000);
                 console.log(error);
             }
         });
@@ -1095,15 +1102,16 @@ MagnaX - Application Performance Monitoring
                                     y_jank = data['jank'];
                                 seriesJank.addPoint([x_jsnk, y_jank], true, true);
                             }
-                            timers.fps = setTimeout(function(){ getFps(pkgname,device,fps_switch); }, 1000);
                         }catch (e) {}
                     }else{
-                        SwalFire('error','Something error',data['msg'],2000);
+                        console.log('fps collect error:', data['msg']);
                     }
                 }
             },
+            complete: function(){
+                if(stop == false){ timers.fps = setTimeout(function(){ getFps(pkgname,device,fps_switch); }, 1000); }
+            },
             error: function(error){
-                SwalFire('error','Server Error','Please press [ctrl+shift+i] and provide the browser\'s error message',5000);
                 console.log(error);
             }
         });
@@ -1131,17 +1139,18 @@ MagnaX - Application Performance Monitoring
                                 y_free = data['free'];
                             seriesUsedDisk.addPoint([x_used, y_used], true, true);
                             seriesFreeDisk.addPoint([x_free, y_free], true, true);
-                            timers.disk = setTimeout(function(){ getDisk(device); }, 3000);
                         }catch (e) {
                             console.log(e)
                         }
                     }else{
-                        SwalFire('error','Something error',data['msg'],2000);
+                        console.log('disk collect error:', data['msg']);
                     }
                 }
             },
+            complete: function(){
+                if(stop == false){ timers.disk = setTimeout(function(){ getDisk(device); }, 3000); }
+            },
             error: function(error){
-                SwalFire('error','Server Error','Please press [ctrl+shift+i] and provide the browser\'s error message',5000);
                 console.log(error);
             }
         });
@@ -1184,17 +1193,18 @@ MagnaX - Application Performance Monitoring
                             seriesNetworkCost.addPoint([x, y_NetworkCost], true, true);
                             seriesTotalCost.addPoint([x, y_TotalCost], true, true);
                             seriesTotalOverhead.addPoint([x, y_TotalOverhead], true, true);
-                            timers.energy = setTimeout(function(){ getEnergy(pkgname,device); }, 2000);
                         }catch (e) {
                             console.log(e)
                         }
                     }else{
-                        SwalFire('error','Something error',data['msg'],2000);
+                        console.log('energy collect error:', data['msg']);
                     }
                 }
             },
+            complete: function(){
+                if(stop == false){ timers.energy = setTimeout(function(){ getEnergy(pkgname,device); }, 2000); }
+            },
             error: function(error){
-                SwalFire('error','Server Error','Please press [ctrl+shift+i] and provide the browser\'s error message',5000);
                 console.log(error);
             }
         });
