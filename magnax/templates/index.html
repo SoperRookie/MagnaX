@@ -409,6 +409,11 @@ MagnaX - Application Performance Monitoring
 {% block js %}
 <script>
 
+    // 给监控页所有 ajax 设默认超时:某次 adb 采集在高负载下卡住时,请求会超时返回(触发
+    // complete 重新排期),避免该指标曲线永久卡住。轮询采集最多 ~1.5s,20s 足够;
+    // 报告生成/安装等长操作单独放宽 timeout。
+    $.ajaxSetup({ timeout: 20000 });
+
     var stop = false; // 任务状态
 
     var cores_num = cpucoreNum();
@@ -2246,6 +2251,7 @@ MagnaX - Application Performance Monitoring
             type: "GET",
             async: true,
             cache: false,
+            timeout: 180000,
             data:{
                 platform:platform,
                 model:'normal',
@@ -2475,6 +2481,7 @@ MagnaX - Application Performance Monitoring
                 type: "POST",
                 async: true,
                 cache: false,
+                timeout: 300000,
                 processData: false,
                 contentType: false,
                 data:formData,
@@ -2510,6 +2517,7 @@ MagnaX - Application Performance Monitoring
             type: "POST",
             async: true,
             cache: false,
+            timeout: 300000,
             processData: false,
             contentType: false,
             data:formData,
