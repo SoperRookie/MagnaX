@@ -510,6 +510,24 @@ def h5Waterfall():
         result = {'status': 0, 'msg': str(e)}
     return result
 
+@api.route('/apm/h5/clear', methods=['post', 'get'])
+def h5Clear():
+    """清空 H5 会话日志(开始新测试时调用),保证报告只含本次会话、从头到尾"""
+    try:
+        import glob
+        paths = (glob.glob(os.path.join(f.report_dir, 'h5_*.log')) +
+                 glob.glob(os.path.join(f.report_dir, 'h5_*.json')))
+        for p in paths:
+            try:
+                os.remove(p)
+            except Exception:
+                pass
+        result = {'status': 1}
+    except Exception as e:
+        logger.exception(e)
+        result = {'status': 0, 'msg': str(e)}
+    return result
+
 @api.route('/apm/h5/save', methods=['post', 'get'])
 def h5Save():
     """保存 H5 报告:把 h5_*.log + result.json 归档进场景目录,进现有报告列表"""
