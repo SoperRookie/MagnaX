@@ -75,12 +75,14 @@ RUNTIME_JS = r'''(function(){
 class H5PerformanceMonitor(object):
     """H5 性能采集。每次采集独立重连 CDP(与 iOS 方案一致,避免长连接泄漏)。"""
 
-    def __init__(self, deviceId, url=None, wsUrl=None, noLog=True, local_port=9333):
+    def __init__(self, deviceId, url=None, wsUrl=None, noLog=True, local_port=9333, socket=None):
         self.deviceId = deviceId
         self.url = url
         self.wsUrl = wsUrl
         self.noLog = noLog
-        self.client = CDPClient(deviceId, local_port=local_port)
+        # socket 指定调试目标(Chrome=chrome_devtools_remote 或 App 的 webview_devtools_remote_<pid>);
+        # forward 用它,这样选 WebView 时隧道指向对的 socket
+        self.client = CDPClient(deviceId, local_port=local_port, socket_name=socket)
 
     def _pick_ws(self):
         if self.wsUrl:

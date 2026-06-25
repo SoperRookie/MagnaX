@@ -43,18 +43,23 @@
           <label class="form-label">{% if lan == 'cn' %}设备{% else %}Device{% endif %}</label>
           <select id="h5-device" class="select-device select2-selection--single" style="width:100%"></select>
         </div>
-        <div class="col-md-5">
-          <label class="form-label">{% if lan == 'cn' %}页面 (Chrome 已打开的 tab){% else %}Page tab{% endif %}</label>
+        <div class="col-md-3">
+          <label class="form-label">{% if lan == 'cn' %}调试目标 (Chrome / App WebView){% else %}Target{% endif %}</label>
+          <select id="h5-target" class="select2-selection--single" style="width:100%"></select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">{% if lan == 'cn' %}页面 tab{% else %}Page tab{% endif %}</label>
           <select id="h5-tab" class="select2-selection--single" style="width:100%"></select>
         </div>
-        <div class="col-md-4">
-          <label class="form-label">{% if lan == 'cn' %}宿主应用包名 (发热归因,留空则不采原生){% else %}Host package{% endif %}</label>
+        <div class="col-md-3">
+          <label class="form-label">{% if lan == 'cn' %}宿主应用包名 (发热归因){% else %}Host package{% endif %}</label>
           <input id="h5-host-pkg" type="text" class="form-control" value="com.android.chrome"
                  placeholder="com.android.chrome / 你的App包名">
         </div>
       </div>
       <div class="row">
         <div class="col">
+          <button class="btn btn-outline-secondary" onclick="refreshTargets()">{% if lan == 'cn' %}刷新目标{% else %}Targets{% endif %}</button>
           <button class="btn btn-outline-primary" onclick="refreshPages()">{% if lan == 'cn' %}刷新页面{% else %}Refresh{% endif %}</button>
           <button class="btn btn-primary" onclick="testLoad()">{% if lan == 'cn' %}测加载{% else %}Load{% endif %}</button>
           <button class="btn btn-success" id="btn-start" onclick="startMonitor()">{% if lan == 'cn' %}开始监控{% else %}Start{% endif %}</button>
@@ -108,9 +113,11 @@
   var charts = {};
   var lastLongtask = null;  // 上次的长任务累计值,用于算每次采样的新增量
   var h5PageUrls = {};      // ws -> 页面url,保存报告时用作页面标识
+  var h5TargetPkgs = {};    // socket -> 包名(选 WebView 时自动填宿主包名)
 
   function h5Device(){ return $('#h5-device').val(); }
   function h5Ws(){ return $('#h5-tab').val(); }
+  function h5Socket(){ return $('#h5-target').val() || ''; }
 
   // 初始化:拉安卓设备列表
   function initH5Env(){
@@ -121,9 +128,32 @@
         if(data['status'] != 1){ SwalFire('error', lan=='cn'?'连接失败':'Connect failed', lan=='cn'?'未发现安卓设备':'No device', 4000); return; }
         for(var i=0;i<data['devices'].length;i++){ $('#h5-device').append('<option>'+data['devices'][i].trim()+'</option>'); }
         $('#h5-device').trigger('change');
-        refreshPages();
+        refreshTargets();
       },
       error:function(){ SwalFire('error','Server Error','',4000); }
+    });
+  }
+
+  // 刷新调试目标(Chrome + 各 App WebView)
+  function refreshTargets(){
+    if(!h5Device()) return;
+    $.ajax({
+      url: Host + '/device/h5/sockets', type:'GET', cache:false, timeout:15000,
+      data:{ device: h5Device() },
+      beforeSend:function(){ SwalLoading(lan=='cn'?'读取目标':'Loading', lan=='cn'?'正在读取调试目标(Chrome/WebView)':'Reading targets'); },
+      success:function(data){
+        swal.close();
+        $('#h5-target').empty(); h5TargetPkgs = {};
+        if(data['status'] != 1){ SwalFire('error', lan=='cn'?'读取失败':'Failed', data['msg']||'', 5000); return; }
+        var ts = data['targets'] || [];
+        if(!ts.length){ SwalFire('warning', lan=='cn'?'无调试目标':'No target', lan=='cn'?'确认 Chrome 已开页面、或 App 已开 WebView 调试':'Open Chrome/WebView debug', 5000); return; }
+        ts.forEach(function(t){
+          $('#h5-target').append('<option value="'+t.socket+'">'+t.label+'</option>');
+          h5TargetPkgs[t.socket] = t.pkg || '';
+        });
+        $('#h5-target').trigger('change');  // 触发 change 处理:自动填包名 + 刷新该目标页面
+      },
+      error:function(){ swal.close(); SwalFire('error','Server Error','',4000); }
     });
   }
 
@@ -132,8 +162,8 @@
     if(!h5Device()) return;
     $.ajax({
       url: Host + '/device/h5/pages', type:'GET', cache:false, timeout:15000,
-      data:{ device: h5Device() },
-      beforeSend:function(){ SwalLoading(lan=='cn'?'读取页面':'Loading', lan=='cn'?'正在读取 Chrome 页面列表':'Reading Chrome tabs'); },
+      data:{ device: h5Device(), socket: h5Socket() },
+      beforeSend:function(){ SwalLoading(lan=='cn'?'读取页面':'Loading', lan=='cn'?'正在读取页面列表':'Reading tabs'); },
       success:function(data){
         swal.close();
         $('#h5-tab').empty();
@@ -156,7 +186,7 @@
     if(!h5Ws()){ SwalFire('warning', lan=='cn'?'请选择页面':'Select a page', '', 3000); return; }
     $.ajax({
       url: Host + '/apm/h5/load', type:'GET', cache:false, timeout:60000,
-      data:{ device: h5Device(), ws: h5Ws() },
+      data:{ device: h5Device(), ws: h5Ws(), socket: h5Socket() },
       beforeSend:function(){ SwalLoading(lan=='cn'?'采集中':'Collecting', lan=='cn'?'正在 reload 页面采集加载指标':'Reloading & measuring'); },
       success:function(d){
         swal.close();
@@ -232,7 +262,7 @@
     pollNative();  // 同一轮询周期叠加宿主原生指标
     $.ajax({
       url: Host + '/apm/h5/runtime', type:'GET', cache:false, timeout:20000,
-      data:{ device: h5Device(), ws: h5Ws() },
+      data:{ device: h5Device(), ws: h5Ws(), socket: h5Socket() },
       success:function(d){
         if(d['status'] != 1) return;
         pushPoint(charts.fps, d.fps);
@@ -285,6 +315,14 @@
     });
   }
 
-  $(document).ready(function(){ initH5Env(); });
+  $(document).ready(function(){
+    // 切换调试目标:自动填宿主包名 + 刷新该目标的页面列表
+    $('#h5-target').on('change', function(){
+      var pkg = h5TargetPkgs[h5Socket()];
+      if(pkg){ $('#h5-host-pkg').val(pkg); }
+      refreshPages();
+    });
+    initH5Env();
+  });
 </script>
 {% endblock %}

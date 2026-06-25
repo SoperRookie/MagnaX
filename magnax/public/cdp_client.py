@@ -47,6 +47,37 @@ class CDPClient(object):
                     names.add(line[idx + 1:].strip())
         return sorted(names)
 
+    @staticmethod
+    def list_targets(device_id):
+        """列出可调试目标:Chrome + 各 App 的 WebView(解析 pid->包名,给出友好标签)。
+        返回 [{'socket','type','pkg','label'}],供前端选择'调试目标'。"""
+        socks = CDPClient.list_sockets(device_id)
+        # 一次 ps 建 pid->进程名(=包名) 映射,用于把 webview_devtools_remote_<pid> 解析成 App
+        pidmap = {}
+        try:
+            out = adb.shell('ps -A', device_id)
+            for line in out.splitlines()[1:]:
+                parts = line.split()
+                if len(parts) >= 2 and parts[1].isdigit():
+                    pidmap[parts[1]] = parts[-1]
+        except Exception:
+            pass
+        targets = []
+        for s in socks:
+            if s.startswith('webview_devtools_remote_'):
+                pid = s.rsplit('_', 1)[-1]
+                pkg = pidmap.get(pid, '')
+                targets.append({'socket': s, 'type': 'webview', 'pkg': pkg,
+                                'label': f'WebView: {pkg or ("pid " + pid)}'})
+            elif 'chrome_devtools_remote' in s:
+                targets.append({'socket': s, 'type': 'chrome', 'pkg': 'com.android.chrome',
+                                'label': 'Chrome'})
+            else:
+                targets.append({'socket': s, 'type': 'other', 'pkg': '', 'label': s})
+        # Chrome 排前面
+        targets.sort(key=lambda t: 0 if t['type'] == 'chrome' else 1)
+        return targets
+
     def _forward(self):
         adb.forward_remove(self.local_port, self.device_id)
         adb.forward(self.local_port, f'localabstract:{self.socket_name}', self.device_id)

@@ -382,14 +382,28 @@ def getNetWorkData():
     return result
 
 # ====================== H5 性能(安卓 Chrome / CDP) ======================
-@api.route('/device/h5/pages', methods=['post', 'get'])
-def h5Pages():
-    """列出安卓设备 Chrome 里可调试的页面 tab"""
+@api.route('/device/h5/sockets', methods=['post', 'get'])
+def h5Sockets():
+    """列出可调试目标:Chrome + 各 App 的 WebView(带包名),供前端选择调试目标"""
     device = method._request(request, 'device')
     try:
         from magnax.public.cdp_client import CDPClient
         deviceId = d.getIdbyDevice(device, Platform.Android)
-        pages = CDPClient(deviceId).list_pages()
+        result = {'status': 1, 'targets': CDPClient.list_targets(deviceId)}
+    except Exception as e:
+        logger.exception(e)
+        result = {'status': 0, 'msg': str(e)}
+    return result
+
+@api.route('/device/h5/pages', methods=['post', 'get'])
+def h5Pages():
+    """列出指定调试目标(Chrome 或某 App 的 WebView)里可调试的页面 tab"""
+    device = method._request(request, 'device')
+    socket = request.args.get('socket') or request.form.get('socket')
+    try:
+        from magnax.public.cdp_client import CDPClient
+        deviceId = d.getIdbyDevice(device, Platform.Android)
+        pages = CDPClient(deviceId, socket_name=socket).list_pages()
         result = {'status': 1, 'pages': [
             {'title': p.get('title', ''), 'url': p.get('url', ''),
              'ws': p.get('webSocketDebuggerUrl', '')} for p in pages]}
@@ -404,10 +418,11 @@ def h5Load():
     device = method._request(request, 'device')
     url = request.args.get('url') or request.form.get('url')
     ws = request.args.get('ws') or request.form.get('ws')
+    socket = request.args.get('socket') or request.form.get('socket')
     try:
         from magnax.public.h5_perf import H5PerformanceMonitor
         deviceId = d.getIdbyDevice(device, Platform.Android)
-        mon = H5PerformanceMonitor(deviceId, url=url, wsUrl=ws, noLog=False)
+        mon = H5PerformanceMonitor(deviceId, url=url, wsUrl=ws, noLog=False, socket=socket)
         data = mon.collectLoad(do_reload=True)
         result = {'status': 1}
         result.update(data)
@@ -422,10 +437,11 @@ def h5Runtime():
     device = method._request(request, 'device')
     url = request.args.get('url') or request.form.get('url')
     ws = request.args.get('ws') or request.form.get('ws')
+    socket = request.args.get('socket') or request.form.get('socket')
     try:
         from magnax.public.h5_perf import H5PerformanceMonitor
         deviceId = d.getIdbyDevice(device, Platform.Android)
-        mon = H5PerformanceMonitor(deviceId, url=url, wsUrl=ws, noLog=False)
+        mon = H5PerformanceMonitor(deviceId, url=url, wsUrl=ws, noLog=False, socket=socket)
         data = mon.collectRuntime()
         result = {'status': 1}
         result.update(data)
@@ -457,10 +473,11 @@ def h5Waterfall():
     device = method._request(request, 'device')
     url = request.args.get('url') or request.form.get('url')
     ws = request.args.get('ws') or request.form.get('ws')
+    socket = request.args.get('socket') or request.form.get('socket')
     try:
         from magnax.public.h5_perf import H5PerformanceMonitor
         deviceId = d.getIdbyDevice(device, Platform.Android)
-        mon = H5PerformanceMonitor(deviceId, url=url, wsUrl=ws, noLog=True)
+        mon = H5PerformanceMonitor(deviceId, url=url, wsUrl=ws, noLog=True, socket=socket)
         data = mon.collectWaterfall(do_reload=True)
         result = {'status': 1}
         result.update(data)
@@ -488,10 +505,11 @@ def h5Screenshot():
     device = method._request(request, 'device')
     url = request.args.get('url') or request.form.get('url')
     ws = request.args.get('ws') or request.form.get('ws')
+    socket = request.args.get('socket') or request.form.get('socket')
     try:
         from magnax.public.h5_perf import H5PerformanceMonitor
         deviceId = d.getIdbyDevice(device, Platform.Android)
-        mon = H5PerformanceMonitor(deviceId, url=url, wsUrl=ws, noLog=True)
+        mon = H5PerformanceMonitor(deviceId, url=url, wsUrl=ws, noLog=True, socket=socket)
         data = mon.collectScreenshot()
         result = {'status': 1}
         result.update(data)
