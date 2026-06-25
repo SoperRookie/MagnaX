@@ -181,11 +181,12 @@
     // 资源瀑布流(有数据才显示)
     if((h5.waterfall||[]).length){
       $('#wf-section').show();
-      var maxEnd = 1;
-      h5.waterfall.forEach(function(r){ var e=r.start+r.duration; if(e>maxEnd) maxEnd=e; });
+      var minStart = Infinity, maxEnd = 0;
+      h5.waterfall.forEach(function(r){ if(r.start<minStart) minStart=r.start; var e=r.start+r.duration; if(e>maxEnd) maxEnd=e; });
+      var span = (maxEnd - minStart) || 1;
       var wrows = '';
       h5.waterfall.forEach(function(r, i){
-        var leftPct=(r.start/maxEnd*100).toFixed(1), widPct=Math.max(0.5, r.duration/maxEnd*100).toFixed(1);
+        var leftPct=((r.start-minStart)/span*100).toFixed(1), widPct=Math.max(0.5, r.duration/span*100).toFixed(1);
         var tip='DNS '+r.dns+' | 连接 '+r.connect+' | TLS '+r.tls+' | TTFB '+r.ttfb+' | 下载 '+r.download+' ms';
         var bar='<div style="position:relative;height:14px;background:#f1f3f5;border-radius:2px;"><div title="'+tip+'" style="position:absolute;left:'+leftPct+'%;width:'+widPct+'%;height:14px;background:#4dabf7;border-radius:2px;"></div></div>';
         var name=(r.url.split('?')[0].split('/').pop()||r.url).slice(0,40);

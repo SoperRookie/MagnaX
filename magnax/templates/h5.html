@@ -377,7 +377,7 @@
     h5Running = true;
     pollRuntime();  // 自配速:每次轮询在 complete 里排下一次,不会堆积
     if($('#h5-prof-live').is(':checked')){ runProfile(true); }  // 勾选则随监控滚动剖析
-    if($('#wf-live').is(':checked')){ runWaterfall(true); }     // 勾选则随监控滚动抓网络活动
+    if($('#wf-live').is(':checked')){ wfFirstWindow = true; runWaterfall(true); }  // 随监控滚动抓网络活动(累积整会话)
   }
 
   function stopMonitor(){
@@ -407,11 +407,12 @@
   // 资源瀑布流渲染(条形按 start/duration 定位,悬停看阶段分解)
   function renderWaterfall(resources, tbodyId){
     if(!resources || !resources.length){ $('#'+tbodyId).html('<tr><td colspan="7" class="text-muted">'+(lan=='cn'?'无资源 (canvas 游戏页通常为空)':'no resources')+'</td></tr>'); return; }
-    var maxEnd = 1;
-    resources.forEach(function(r){ var e=r.start+r.duration; if(e>maxEnd) maxEnd=e; });
+    var minStart = Infinity, maxEnd = 0;
+    resources.forEach(function(r){ if(r.start<minStart) minStart=r.start; var e=r.start+r.duration; if(e>maxEnd) maxEnd=e; });
+    var span = (maxEnd - minStart) || 1;
     var rows = '';
     resources.forEach(function(r, i){
-      var leftPct=(r.start/maxEnd*100).toFixed(1), widPct=Math.max(0.5, r.duration/maxEnd*100).toFixed(1);
+      var leftPct=((r.start-minStart)/span*100).toFixed(1), widPct=Math.max(0.5, r.duration/span*100).toFixed(1);
       var tip='DNS '+r.dns+' | 连接 '+r.connect+' | TLS '+r.tls+' | TTFB '+r.ttfb+' | 下载 '+r.download+' ms';
       var bar='<div style="position:relative;height:14px;background:#f1f3f5;border-radius:2px;"><div title="'+tip+'" style="position:absolute;left:'+leftPct+'%;width:'+widPct+'%;height:14px;background:#4dabf7;border-radius:2px;"></div></div>';
       var name=(r.url.split('?')[0].split('/').pop()||r.url).slice(0,40);
@@ -419,15 +420,18 @@
     });
     $('#'+tbodyId).html(rows);
   }
-  var h5Wfing = false;  // 防止瀑布流采集重叠
-  // rolling=true: 随监控滚动抓当前网络活动(不reload); false: 手动reload完整采集
+  var h5Wfing = false;       // 防止瀑布流采集重叠
+  var wfFirstWindow = false;  // 实时模式首窗:重置累积(新会话不接上一会话)
+  // rolling=true: 随监控滚动抓当前网络活动(不reload,累积整个会话); false: 手动reload完整采集
   function runWaterfall(rolling){
     if(h5Wfing) return;
     if(!h5Ws()){ if(!rolling) SwalFire('warning', lan=='cn'?'请选择页面':'Select a page', '', 3000); return; }
     h5Wfing = true;
+    var reset = (rolling && wfFirstWindow) ? '1' : '0';
+    if(rolling){ wfFirstWindow = false; }
     $.ajax({
       url: Host+'/apm/h5/waterfall', type:'GET', cache:false, timeout: rolling?15000:35000,
-      data:{ device:h5Device(), ws:h5Ws(), socket:h5Socket(), reload: rolling?'false':'true', seconds: rolling?3:6 },
+      data:{ device:h5Device(), ws:h5Ws(), socket:h5Socket(), reload: rolling?'false':'true', seconds: rolling?3:6, reset: reset },
       beforeSend:function(){ if(!rolling) SwalLoading(lan=='cn'?'采集中':'Collecting', lan=='cn'?'reload 抓资源瀑布流...':'Reloading...'); },
       success:function(d){
         if(d.status==1){ renderWaterfall(d.resources, 'wf-body'); }
@@ -490,9 +494,9 @@
     $('#h5-prof-live').on('change', function(){
       if($(this).is(':checked') && h5Running && !h5Profiling){ runProfile(true); }
     });
-    // 监控进行中勾上"瀑布流实时"时,立即开始滚动抓取
+    // 监控进行中勾上"瀑布流实时"时,立即开始滚动抓取(重置累积)
     $('#wf-live').on('change', function(){
-      if($(this).is(':checked') && h5Running && !h5Wfing){ runWaterfall(true); }
+      if($(this).is(':checked') && h5Running && !h5Wfing){ wfFirstWindow = true; runWaterfall(true); }
     });
     initH5Env();
   });

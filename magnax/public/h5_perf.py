@@ -36,16 +36,38 @@ INJECT_JS = r'''(function(){
     new PerformanceObserver(function(l){
       for (var e of l.getEntries()) { if (!e.hadRecentInput) window.__h5cls += e.value; }
     }).observe({type:'layout-shift', buffered:true});
-    new PerformanceObserver(function(l){
-      for (var e of l.getEntries()){
-        window.__h5longtask += 1;
-        window.__h5tbt += Math.max(0, e.duration - 50);  // TBT:超过50ms的阻塞部分累加
-        var a = (e.attribution && e.attribution[0]) || {};
-        window.__h5lt.push({dur: Math.round(e.duration), at: (a.name || a.containerName || a.containerType || 'self')});
-        if (window.__h5lt.length > 30) window.__h5lt.shift();
-        window.__h5ltspans.push([Math.round(e.startTime), Math.round(e.startTime + e.duration)]);  // 供TTI计算
-      }
-    }).observe({type:'longtask', buffered:true});
+    var _ltPush = function(e, src){
+      window.__h5longtask += 1;
+      window.__h5lt.push({dur: Math.round(e.duration), at: src});
+      if (window.__h5lt.length > 30) window.__h5lt.shift();
+      window.__h5ltspans.push([Math.round(e.startTime), Math.round(e.startTime + e.duration)]);  // 供TTI计算
+    };
+    var _loaf = false;
+    try {
+      // Long Animation Frames:带脚本级归因(sourceURL/函数名),比经典 longtask 强
+      new PerformanceObserver(function(l){
+        for (var e of l.getEntries()){
+          window.__h5tbt += (e.blockingDuration || 0);
+          var src = 'self';
+          if (e.scripts && e.scripts.length){
+            var top = e.scripts.reduce(function(a,b){ return (b.duration||0)>(a.duration||0)?b:a; });
+            var u = top.sourceURL ? top.sourceURL.split('?')[0].split('/').pop() : '';
+            src = (u + ' ' + (top.sourceFunctionName||'')).trim() || top.invokerType || top.invoker || 'script';
+          }
+          _ltPush(e, src);
+        }
+      }).observe({type:'long-animation-frame', buffered:true});
+      _loaf = true;
+    } catch (e) {}
+    if (!_loaf) {  // LoAF 不支持则回退经典 longtask(归因只到容器级)
+      new PerformanceObserver(function(l){
+        for (var e of l.getEntries()){
+          window.__h5tbt += Math.max(0, e.duration - 50);
+          var a = (e.attribution && e.attribution[0]) || {};
+          _ltPush(e, a.containerName || a.containerSrc || a.containerType || 'self');
+        }
+      }).observe({type:'longtask', buffered:true});
+    }
     // INP/FID:交互响应延迟,取最大(近似 INP)
     new PerformanceObserver(function(l){
       for (var e of l.getEntries()){ var d = Math.round(e.duration); if (d > window.__h5inp) window.__h5inp = d; }
@@ -185,24 +207,36 @@ class H5PerformanceMonitor(object):
         finally:
             self.client.close()
 
-    def collectWaterfall(self, do_reload=True, capture_seconds=6):
-        """reload 抓资源瀑布流(每个资源 url/类型/状态/起止/耗时/大小)。固定窗口采集
-        capture_seconds 秒,兼顾传统页面与 SPA(素材在 load 后下载)。
-        注意:canvas 游戏(如 Egret)不暴露标准资源加载,瀑布流会是空的。"""
+    def collectWaterfall(self, do_reload=True, capture_seconds=6, reset=False):
+        """资源瀑布流。do_reload=True:reload 抓完整加载(覆盖落盘);do_reload=False:不 reload
+        抓本窗口当前网络活动,并累积整个会话(按 url+绝对时间去重排序),保存完整时间线。
+        reset=True:实时模式从头开始(新监控会话用,不接上一会话)。"""
         self.client.connect(self._pick_ws())
         try:
             self.client.call('Page.enable')
             self.client.call('Network.enable')
-            if do_reload:
-                self.client.call('Page.reload', {'ignoreCache': True})
-                events = self.client.drain_duration(capture_seconds)
-            else:
-                # 不 reload:抓本窗口内"当前正在加载"的网络活动(实时模式,不打断页面)
-                events = self.client.drain_duration(capture_seconds)
+            self.client.call('Page.reload', {'ignoreCache': True}) if do_reload else None
+            events = self.client.drain_duration(capture_seconds)
             resources = self._build_waterfall(events)
-            # 落盘最近一次瀑布流,保存报告时归档(make_report 搬 .json),供报告页展示
+            wf_path = os.path.join(f.report_dir, 'h5_waterfall.json')
+            if not do_reload:
+                # 实时模式:累积整个会话(按 url+start 去重,按时间排序),不只存最后一窗
+                try:
+                    existing = []
+                    if not reset and os.path.exists(wf_path):
+                        existing = json.load(open(wf_path, encoding='utf-8')).get('resources', [])
+                    seen = {(r['url'], r['start']) for r in existing}
+                    for r in resources:
+                        k = (r['url'], r['start'])
+                        if k not in seen:
+                            existing.append(r); seen.add(k)
+                    existing.sort(key=lambda x: x['start'])
+                    resources = existing[-1000:]  # 防止无限增长
+                except Exception as e:
+                    logger.warning(f'[H5] 瀑布流累积失败: {e}')
+            # 落盘(reload 覆盖为本次完整;实时已是累积),保存报告时归档供报告页展示
             try:
-                with open(os.path.join(f.report_dir, 'h5_waterfall.json'), 'w', encoding='utf-8') as fp:
+                with open(wf_path, 'w', encoding='utf-8') as fp:
                     json.dump({'resources': resources}, fp)
             except Exception as e:
                 logger.warning(f'[H5] 瀑布流落盘失败: {e}')
@@ -305,7 +339,8 @@ class H5PerformanceMonitor(object):
         if t0 is None:
             t0 = 0
         for r in reqs.values():
-            start_ms = round((r['start'] - t0) * 1000, 1)
+            # start 用绝对单调时间(ms),跨窗口可比较,便于实时模式累积排序;渲染时按最小值归一
+            start_ms = round(r['start'] * 1000, 1)
             dur_ms = round((r['end'] - r['start']) * 1000, 1)
             # 阶段耗时(DNS/连接/TLS/TTFB/下载),来自 ResourceTiming(偏移量,-1=不适用)
             tm = r.get('timing') or {}

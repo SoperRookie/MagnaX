@@ -497,11 +497,12 @@ def h5Waterfall():
     socket = request.args.get('socket') or request.form.get('socket')
     do_reload = (request.args.get('reload') or request.form.get('reload') or 'true') != 'false'
     seconds = request.args.get('seconds', 6 if do_reload else 3, type=int)
+    reset = (request.args.get('reset') or request.form.get('reset')) == '1'
     try:
         from magnax.public.h5_perf import H5PerformanceMonitor
         deviceId = d.getIdbyDevice(device, Platform.Android)
         mon = H5PerformanceMonitor(deviceId, url=url, wsUrl=ws, noLog=True, socket=socket, local_port=9335)
-        data = mon.collectWaterfall(do_reload=do_reload, capture_seconds=seconds)
+        data = mon.collectWaterfall(do_reload=do_reload, capture_seconds=seconds, reset=reset)
         result = {'status': 1}
         result.update(data)
     except Exception as e:
