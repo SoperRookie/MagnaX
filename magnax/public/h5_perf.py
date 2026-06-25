@@ -169,6 +169,48 @@ class H5PerformanceMonitor(object):
         finally:
             self.client.close()
 
+    def collectProfile(self, seconds=5):
+        """CPU 剖析 seconds 秒,聚合每个函数的 self-time,返回 Top 热点函数。
+        直接回答'哪段 JS 在烧 CPU/发热'。需页面在剖析期间正常运行(游戏渲染中)。"""
+        self.client.connect(self._pick_ws())
+        try:
+            self.client.call('Profiler.enable')
+            self.client.call('Profiler.setSamplingInterval', {'interval': 1000})  # 1ms/样本
+            self.client.call('Profiler.start')
+            import time as _t
+            _t.sleep(max(1, min(int(seconds), 30)))
+            r = self.client.call('Profiler.stop', timeout=40)
+            return {'top': self._top_functions(r.get('profile', {}))}
+        finally:
+            self.client.close()
+
+    @staticmethod
+    def _top_functions(profile, top_n=20):
+        """从 CPU profile 聚合 self-time(hitCount)到函数级,返回 Top N。
+        采样间隔 1ms,故 hitCount≈自耗时(ms);selfPercent 为占总采样比。"""
+        nodes = profile.get('nodes', []) or []
+        total = sum(n.get('hitCount', 0) for n in nodes) or 1
+        agg = {}
+        for n in nodes:
+            hits = n.get('hitCount', 0)
+            if hits <= 0:
+                continue
+            cf = n.get('callFrame', {})
+            name = cf.get('functionName') or '(anonymous)'
+            url = cf.get('url', '') or ''
+            line = cf.get('lineNumber', -1)
+            key = (name, url, line)
+            agg[key] = agg.get(key, 0) + hits
+        items = [{
+            'function': name,
+            'url': (url.split('/')[-1] if url else '(native)'),
+            'line': (line + 1) if line >= 0 else 0,
+            'selfPercent': round(h * 100.0 / total, 1),
+            'selfMs': h,
+        } for (name, url, line), h in agg.items()]
+        items.sort(key=lambda x: x['selfMs'], reverse=True)
+        return items[:top_n]
+
     def collectScreenshot(self):
         """截当前屏(不 reload,快且稳),返回 jpeg base64。
         不调 Page.enable —— 截图不需要它,且它会引发事件洪流干扰应答匹配。"""

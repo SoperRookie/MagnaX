@@ -105,6 +105,30 @@
     <div class="col-md-4 mb-3"><div class="card"><div class="card-body"><div id="chart-htemp" class="h5-chart"></div></div></div></div>
   </div>
 
+  <!-- JS 热点剖析:剖析N秒,列出最耗CPU的函数 -->
+  <h3 class="mb-2">{% if lan == 'cn' %}JS 热点剖析 (哪段代码烧 CPU){% else %}JS CPU Profile{% endif %}</h3>
+  <div class="card mb-3"><div class="card-body">
+    <div class="row g-2 align-items-end mb-2">
+      <div class="col-auto">
+        <label class="form-label">{% if lan == 'cn' %}时长(秒){% else %}Seconds{% endif %}</label>
+        <input id="h5-prof-sec" type="number" class="form-control" value="5" min="1" max="30" style="width:90px">
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-primary" onclick="profileH5()">{% if lan == 'cn' %}开始剖析{% else %}Profile{% endif %}</button>
+      </div>
+      <div class="col text-muted" style="font-size:12px;">{% if lan == 'cn' %}剖析期间让游戏正常跑;(idle)高=CPU空闲多,瓶颈在渲染而非JS{% else %}Keep the page active while profiling{% endif %}</div>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm table-vcenter">
+        <thead><tr>
+          <th>#</th><th>{% if lan == 'cn' %}函数{% else %}Function{% endif %}</th>
+          <th>Self %</th><th>Self ms</th><th>{% if lan == 'cn' %}文件:行{% else %}File:Line{% endif %}</th>
+        </tr></thead>
+        <tbody id="h5-prof-body"><tr><td colspan="5" class="text-muted">{% if lan == 'cn' %}点"开始剖析"采集{% else %}Click Profile{% endif %}</td></tr></tbody>
+      </table>
+    </div>
+  </div></div>
+
 </div>
 {% endblock %}
 
@@ -324,6 +348,27 @@
         swal.close();
         if(d['status'] != 1){ SwalFire('error', lan=='cn'?'保存失败':'Failed', d['msg']||'', 5000); return; }
         SwalFire('success', lan=='cn'?'已保存':'Saved', lan=='cn'?'可在报告列表查看':'See report list', 2500);
+      },
+      error:function(){ swal.close(); SwalFire('error','Server Error','',4000); }
+    });
+  }
+
+  // JS 热点剖析:剖析 N 秒 -> 列出最耗 CPU 的函数
+  function profileH5(){
+    if(!h5Ws()){ SwalFire('warning', lan=='cn'?'请选择页面':'Select a page', '', 3000); return; }
+    var sec = parseInt($('#h5-prof-sec').val()) || 5;
+    $.ajax({
+      url: Host + '/apm/h5/profile', type:'GET', cache:false, timeout:(sec+40)*1000,
+      data:{ device: h5Device(), ws: h5Ws(), socket: h5Socket(), seconds: sec },
+      beforeSend:function(){ SwalLoading(lan=='cn'?'剖析中':'Profiling', lan=='cn'?('采集 '+sec+' 秒 CPU 剖析,请让页面正常跑...'):('Profiling '+sec+'s...')); },
+      success:function(d){
+        swal.close();
+        if(d.status != 1){ SwalFire('error', lan=='cn'?'剖析失败':'Failed', d.msg||'', 5000); return; }
+        var rows = '';
+        (d.top||[]).forEach(function(t, i){
+          rows += '<tr><td>'+(i+1)+'</td><td><code>'+t['function']+'</code></td><td>'+t.selfPercent+'%</td><td>'+t.selfMs+'</td><td class="text-muted">'+t.url+':'+t.line+'</td></tr>';
+        });
+        $('#h5-prof-body').html(rows || '<tr><td colspan="5" class="text-muted">'+(lan=='cn'?'无数据':'no data')+'</td></tr>');
       },
       error:function(){ swal.close(); SwalFire('error','Server Error','',4000); }
     });

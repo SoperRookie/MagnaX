@@ -467,6 +467,25 @@ def h5Host():
         result = {'status': 0, 'msg': str(e)}
     return result
 
+@api.route('/apm/h5/profile', methods=['post', 'get'])
+def h5Profile():
+    """CPU 剖析 N 秒,返回 Top 热点函数(找哪段 JS 在烧 CPU)"""
+    device = method._request(request, 'device')
+    ws = request.args.get('ws') or request.form.get('ws')
+    socket = request.args.get('socket') or request.form.get('socket')
+    seconds = request.args.get('seconds', 5, type=int)
+    try:
+        from magnax.public.h5_perf import H5PerformanceMonitor
+        deviceId = d.getIdbyDevice(device, Platform.Android)
+        mon = H5PerformanceMonitor(deviceId, wsUrl=ws, noLog=True, socket=socket)
+        data = mon.collectProfile(seconds=seconds)
+        result = {'status': 1}
+        result.update(data)
+    except Exception as e:
+        logger.exception(e)
+        result = {'status': 0, 'msg': str(e)}
+    return result
+
 @api.route('/apm/h5/waterfall', methods=['post', 'get'])
 def h5Waterfall():
     """reload 采集资源瀑布流(canvas 游戏页会是空)"""
