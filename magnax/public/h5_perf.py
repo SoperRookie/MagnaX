@@ -11,6 +11,7 @@ Web Vitals(LCP/CLS/长任务)与页面 FPS 通过 PerformanceObserver / rAF 注�
 因此运行时轮询可"每次重连"而不丢 FPS。
 """
 import os
+import re
 import json
 import datetime
 
@@ -88,7 +89,10 @@ class H5PerformanceMonitor(object):
         if self.wsUrl:
             # 直接给了 ws 地址时,仍需确保 adb forward 隧道在(否则 127.0.0.1:port 连不上)
             self.client._forward()
-            return self.wsUrl
+            # 把 ws 里的端口改成本实例的转发端口,隔离不同采集器(运行时9333/剖析9334),
+            # 避免并发时共用端口互相 remove forward 打断对方
+            return re.sub(r'(://[^:/]+:)\d+', lambda m: m.group(1) + str(self.client.local_port),
+                          self.wsUrl, count=1)
         pages = self.client.list_pages()
         if not pages:
             raise CDPError('没有可调试的页面(确认 Chrome 已打开 H5、非无痕模式)')

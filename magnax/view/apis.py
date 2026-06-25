@@ -477,7 +477,8 @@ def h5Profile():
     try:
         from magnax.public.h5_perf import H5PerformanceMonitor
         deviceId = d.getIdbyDevice(device, Platform.Android)
-        mon = H5PerformanceMonitor(deviceId, wsUrl=ws, noLog=True, socket=socket)
+        # 剖析用独立端口 9334,与运行时轮询(9333)隔离,二者可并发不互相打断
+        mon = H5PerformanceMonitor(deviceId, wsUrl=ws, noLog=True, socket=socket, local_port=9334)
         data = mon.collectProfile(seconds=seconds)
         result = {'status': 1}
         result.update(data)
