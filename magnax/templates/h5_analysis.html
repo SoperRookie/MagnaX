@@ -51,6 +51,8 @@
     <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-heap" class="h5-chart"></div></div></div></div>
     <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-nodes" class="h5-chart"></div></div></div></div>
     <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-longtask" class="h5-chart"></div></div></div></div>
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-layout" class="h5-chart"></div></div></div></div>
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-listeners" class="h5-chart"></div></div></div></div>
   </div>
 
   <!-- 运行时曲线: 宿主进程(原生,发热归因);无数据时整段隐藏 -->
@@ -103,6 +105,9 @@
     mkChart('chart-heap', lan=='cn'?'JS堆内存 (MB)':'JS Heap (MB)', '#206bc4', h5.heap||[], ' MB');
     mkChart('chart-nodes', lan=='cn'?'DOM 节点数':'DOM Nodes', '#f59f00', h5.nodes||[], '');
     mkChart('chart-longtask', lan=='cn'?'长任务 (每次新增)':'Long Tasks (new)', '#d63939', h5.longtask||[], '');
+    mkChart2('chart-layout', lan=='cn'?'布局 / 样式重算 (每次新增)':'Layout / Recalc (new)',
+      [lan=='cn'?'布局':'layout', lan=='cn'?'样式重算':'recalc'], ['#d6336c','#7048e8'], h5.layout||[], h5.recalc||[], '');
+    mkChart('chart-listeners', lan=='cn'?'JS 事件监听器数':'JS Listeners', '#0ca678', h5.listeners||[], '');
     // 宿主原生:有数据才显示
     if((h5.hostTemp||[]).length || (h5.hostCpuApp||[]).length){
       $('#host-section').show();

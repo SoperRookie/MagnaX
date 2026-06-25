@@ -715,12 +715,14 @@ class File:
             _, vals, _ = self.readLog(scene=scene, filename=fname)
             return vals[-1] if vals else 0
 
-        # 长任务日志存的是累计值,报告里换算成"每次新增"(与实时页一致)
-        lt_delta, prev = [], None
-        for pt in series('h5_longtask.log'):
-            cur = pt['y']
-            lt_delta.append({'x': pt['x'], 'y': 0 if (prev is None or cur < prev) else cur - prev})
-            prev = cur
+        def delta_series(fname):
+            """把累计值日志(长任务/布局/样式重算)换算成'每次采样新增'(与实时页一致)"""
+            out, prev = [], None
+            for pt in series(fname):
+                cur = pt['y']
+                out.append({'x': pt['x'], 'y': 0 if (prev is None or cur < prev) else cur - prev})
+                prev = cur
+            return out
 
         return {
             'app': result_json.get('app'),
@@ -729,7 +731,11 @@ class File:
             'fps': series('h5_pagefps.log'),
             'heap': series('h5_heap.log'),
             'nodes': series('h5_nodes.log'),
-            'longtask': lt_delta,
+            'longtask': delta_series('h5_longtask.log'),
+            # 对标 Chrome Performance Monitor:监听器数(绝对) + 布局/样式重算(每次新增)
+            'listeners': series('h5_listeners.log'),
+            'layout': delta_series('h5_layout.log'),
+            'recalc': delta_series('h5_recalc.log'),
             # 宿主进程原生指标(发热归因);H5-only 会话无这些日志时返回空列表
             'hostCpuApp': series('h5_host_cpu_app.log'),
             'hostCpuSys': series('h5_host_cpu_sys.log'),

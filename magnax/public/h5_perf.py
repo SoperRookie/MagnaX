@@ -100,12 +100,18 @@ class H5PerformanceMonitor(object):
         return p['webSocketDebuggerUrl']
 
     def _metrics(self):
-        """CDP Performance 域取 JS堆/DOM节点(不依赖页面 flag)"""
+        """CDP Performance 域取一组指标(对标 Chrome Performance Monitor,不依赖页面 flag):
+        JS堆/DOM节点/事件监听器数/累计布局数/累计样式重算数。
+        layout/recalc 是累计值,前端按相邻差算成'每秒'。"""
         self.client.call('Performance.enable')
         ms = {m['name']: m['value'] for m in self.client.call('Performance.getMetrics').get('metrics', [])}
-        heap = round(ms.get('JSHeapUsedSize', 0) / 1024 / 1024, 2)
-        nodes = int(ms.get('Nodes', 0))
-        return heap, nodes
+        return {
+            'heap': round(ms.get('JSHeapUsedSize', 0) / 1024 / 1024, 2),
+            'nodes': int(ms.get('Nodes', 0)),
+            'listeners': int(ms.get('JSEventListeners', 0)),
+            'layoutCount': int(ms.get('LayoutCount', 0)),
+            'recalcCount': int(ms.get('RecalcStyleCount', 0)),
+        }
 
     def collectLoad(self, do_reload=True):
         """reload 取一次完整加载指标(白屏/首屏/FCP/LCP/...)"""
@@ -123,7 +129,8 @@ class H5PerformanceMonitor(object):
             else:
                 self.client.evaluate(INJECT_JS)
             data = json.loads(self.client.evaluate(LOAD_JS))
-            data['heap'], data['nodes'] = self._metrics()
+            m = self._metrics()
+            data['heap'] = m['heap']; data['nodes'] = m['nodes']
             if not self.noLog:
                 self._log_load(data)
             return data
@@ -137,7 +144,7 @@ class H5PerformanceMonitor(object):
             self.client.call('Runtime.enable')
             self.client.evaluate(INJECT_JS)  # 幂等:确保 FPS/Observer 已注入
             data = json.loads(self.client.evaluate(RUNTIME_JS))
-            data['heap'], data['nodes'] = self._metrics()
+            data.update(self._metrics())  # heap/nodes/listeners/layoutCount/recalcCount
             if not self.noLog:
                 self._log_runtime(data)
             return data
@@ -264,3 +271,6 @@ class H5PerformanceMonitor(object):
         f.add_log(os.path.join(f.report_dir, 'h5_heap.log'), t, data.get('heap', 0))
         f.add_log(os.path.join(f.report_dir, 'h5_nodes.log'), t, data.get('nodes', 0))
         f.add_log(os.path.join(f.report_dir, 'h5_longtask.log'), t, data.get('longtask', 0))
+        f.add_log(os.path.join(f.report_dir, 'h5_listeners.log'), t, data.get('listeners', 0))
+        f.add_log(os.path.join(f.report_dir, 'h5_layout.log'), t, data.get('layoutCount', 0))
+        f.add_log(os.path.join(f.report_dir, 'h5_recalc.log'), t, data.get('recalcCount', 0))

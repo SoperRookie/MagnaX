@@ -93,6 +93,8 @@
     <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-heap" class="h5-chart"></div></div></div></div>
     <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-nodes" class="h5-chart"></div></div></div></div>
     <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-longtask" class="h5-chart"></div></div></div></div>
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-layout" class="h5-chart"></div></div></div></div>
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-listeners" class="h5-chart"></div></div></div></div>
   </div>
 
   <!-- 运行时曲线: 宿主进程(原生),用于发热归因 -->
@@ -112,6 +114,7 @@
   var h5Running = false;   // 监控运行标志(自配速递归轮询用)
   var charts = {};
   var lastLongtask = null;  // 上次的长任务累计值,用于算每次采样的新增量
+  var lastLayout = null, lastRecalc = null;  // 布局/样式重算累计值,算每次新增
   var h5PageUrls = {};      // ws -> 页面url,保存报告时用作页面标识
   var h5TargetPkgs = {};    // socket -> 包名(选 WebView 时自动填宿主包名)
 
@@ -229,6 +232,9 @@
     charts.heap = mkChart('chart-heap', lan=='cn'?'JS堆内存 (MB)':'JS Heap (MB)', '#206bc4', ' MB');
     charts.nodes = mkChart('chart-nodes', lan=='cn'?'DOM 节点数':'DOM Nodes', '#f59f00', '');
     charts.longtask = mkChart('chart-longtask', lan=='cn'?'长任务 (每次新增)':'Long Tasks (new)', '#d63939', '');
+    charts.layout = mkChart2('chart-layout', lan=='cn'?'布局 / 样式重算 (每次新增)':'Layout / Recalc (new)',
+      [lan=='cn'?'布局':'layout', lan=='cn'?'样式重算':'recalc'], ['#d6336c', '#7048e8'], '');
+    charts.listeners = mkChart('chart-listeners', lan=='cn'?'JS 事件监听器数':'JS Listeners', '#0ca678', '');
     // 宿主进程(原生)
     charts.hcpu = mkChart2('chart-hcpu', lan=='cn'?'宿主 CPU %':'Host CPU %',
       [lan=='cn'?'应用':'app', lan=='cn'?'系统':'sys'], ['#d63939', '#f59f00'], ' %');
@@ -273,6 +279,14 @@
         var delta = (lastLongtask === null || cur < lastLongtask) ? 0 : (cur - lastLongtask);
         lastLongtask = cur;
         pushPoint(charts.longtask, delta);
+        // 布局/样式重算:累计值转每次新增(满帧重绘时这两个会很高)
+        var cl = Number(d.layoutCount);
+        pushPoint(charts.layout, (lastLayout === null || cl < lastLayout) ? 0 : (cl - lastLayout), 0);
+        lastLayout = cl;
+        var cr = Number(d.recalcCount);
+        pushPoint(charts.layout, (lastRecalc === null || cr < lastRecalc) ? 0 : (cr - lastRecalc), 1);
+        lastRecalc = cr;
+        pushPoint(charts.listeners, d.listeners);
       },
       complete:function(){
         // 自配速:本次回来(成功/失败/超时)后再排下一次,避免请求堆积;单次失败也不断链
@@ -284,7 +298,7 @@
   function startMonitor(){
     if(!h5Ws()){ SwalFire('warning', lan=='cn'?'请选择页面':'Select a page', '', 3000); return; }
     if(h5Running) return;
-    lastLongtask = null;  // 每次开始监控重置长任务基准
+    lastLongtask = null; lastLayout = null; lastRecalc = null;  // 重置累计基准
     if(!charts.fps) initCharts();
     $('#btn-start').prop('disabled', true); $('#btn-stop').prop('disabled', false);
     h5Running = true;
