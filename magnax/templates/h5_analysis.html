@@ -26,9 +26,12 @@
 {% block page_body %}
 <div class="container-xl">
 
-  <div class="card mb-3"><div class="card-body">
-    <div><strong>{% if lan == 'cn' %}页面{% else %}URL{% endif %}:</strong> <span style="word-break:break-all;">{{ h5_data.app }}</span></div>
-    <div><strong>{% if lan == 'cn' %}设备{% else %}Device{% endif %}:</strong> {{ h5_data.devices }} &nbsp;&nbsp; <strong>{% if lan == 'cn' %}时间{% else %}Time{% endif %}:</strong> {{ h5_data.ctime }}</div>
+  <div class="card mb-3"><div class="card-body d-flex justify-content-between align-items-start">
+    <div>
+      <div><strong>{% if lan == 'cn' %}页面{% else %}URL{% endif %}:</strong> <span style="word-break:break-all;">{{ h5_data.app }}</span></div>
+      <div><strong>{% if lan == 'cn' %}设备{% else %}Device{% endif %}:</strong> {{ h5_data.devices }} &nbsp;&nbsp; <strong>{% if lan == 'cn' %}时间{% else %}Time{% endif %}:</strong> {{ h5_data.ctime }}</div>
+    </div>
+    <button id="btn-export" class="btn btn-outline-primary flex-shrink-0 ms-2" onclick="exportHtml()">{% if lan == 'cn' %}导出 HTML{% else %}Export HTML{% endif %}</button>
   </div></div>
 
   <!-- 加载成绩单 -->
@@ -138,6 +141,32 @@
         { name:names[0], data: cpuApp.map(function(p){return p.y;}), color:colors[0] },
         { name:names[1], data: cpuSys.map(function(p){return p.y;}), color:colors[1] }
       ]
+    });
+  }
+
+  // 导出自包含 HTML:克隆已渲染页面(图表已是SVG) + 内联样式 + 去脚本,可离线打开/分享
+  function exportHtml(){
+    var btn = document.getElementById('btn-export');
+    btn.disabled = true; btn.textContent = (lan=='cn'?'导出中...':'Exporting...');
+    var links = Array.prototype.slice.call(document.querySelectorAll('link[rel="stylesheet"]'));
+    Promise.all(links.map(function(l){
+      return fetch(l.href).then(function(r){return r.text();})
+        .then(function(css){ return {href:l.getAttribute('href'), css:css}; }).catch(function(){ return null; });
+    })).then(function(results){
+      var clone = document.documentElement.cloneNode(true);
+      clone.querySelectorAll('script').forEach(function(s){ s.remove(); });
+      var eb = clone.querySelector('#btn-export'); if(eb) eb.remove();
+      var cssMap = {}; results.forEach(function(x){ if(x) cssMap[x.href]=x.css; });
+      clone.querySelectorAll('link[rel="stylesheet"]').forEach(function(l){
+        var css = cssMap[l.getAttribute('href')];
+        if(css!=null){ var st=document.createElement('style'); st.textContent=css; l.replaceWith(st); }
+        else { l.remove(); }
+      });
+      var blob = new Blob(['<!DOCTYPE html>\n'+clone.outerHTML], {type:'text/html;charset=utf-8'});
+      var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = 'H5report_' + ((h5.ctime)||'report') + '.html';
+      document.body.appendChild(a); a.click(); a.remove();
+      btn.disabled = false; btn.textContent = (lan=='cn'?'导出 HTML':'Export HTML');
     });
   }
 
