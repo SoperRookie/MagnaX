@@ -119,6 +119,18 @@
     <div class="col-md-4 mb-3"><div class="card"><div class="card-body"><div id="chart-htemp" class="h5-chart"></div></div></div></div>
   </div>
 
+  <!-- 资源瀑布流(reload 采集;canvas 游戏页通常为空) -->
+  <div class="card mb-3"><div class="card-body">
+    <div class="mb-2">
+      <button class="btn btn-primary" onclick="collectWaterfall()">{% if lan == 'cn' %}采集资源瀑布流{% else %}Waterfall{% endif %}</button>
+      <span class="text-muted ms-2" style="font-size:12px;">{% if lan == 'cn' %}reload 抓资源加载;条形悬停看 DNS/连接/TLS/TTFB/下载 分解{% else %}reload & capture; hover bar for phases{% endif %}</span>
+    </div>
+    <div class="table-responsive"><table class="table table-sm table-vcenter">
+      <thead><tr><th>#</th><th>{% if lan == 'cn' %}资源{% else %}Resource{% endif %}</th><th>{% if lan == 'cn' %}类型{% else %}Type{% endif %}</th><th>{% if lan == 'cn' %}状态{% else %}Status{% endif %}</th><th>{% if lan == 'cn' %}大小{% else %}Size{% endif %}</th><th style="width:38%">{% if lan == 'cn' %}瀑布{% else %}Waterfall{% endif %}</th><th>{% if lan == 'cn' %}总(ms){% else %}Total{% endif %}</th></tr></thead>
+      <tbody id="wf-body"><tr><td colspan="7" class="text-muted">{% if lan == 'cn' %}点"采集资源瀑布流"{% else %}Click Waterfall{% endif %}</td></tr></tbody>
+    </table></div>
+  </div></div>
+
   <!-- JS 热点剖析:剖析N秒,列出最耗CPU的函数 -->
   <h3 class="mb-2">{% if lan == 'cn' %}JS 热点剖析 (哪段代码烧 CPU){% else %}JS CPU Profile{% endif %}</h3>
   <div class="card mb-3"><div class="card-body">
@@ -383,6 +395,32 @@
         if(d['status'] != 1){ SwalFire('error', lan=='cn'?'保存失败':'Failed', d['msg']||'', 5000); return; }
         SwalFire('success', lan=='cn'?'已保存':'Saved', lan=='cn'?'可在报告列表查看':'See report list', 2500);
       },
+      error:function(){ swal.close(); SwalFire('error','Server Error','',4000); }
+    });
+  }
+
+  // 资源瀑布流渲染(条形按 start/duration 定位,悬停看阶段分解)
+  function renderWaterfall(resources, tbodyId){
+    if(!resources || !resources.length){ $('#'+tbodyId).html('<tr><td colspan="7" class="text-muted">'+(lan=='cn'?'无资源 (canvas 游戏页通常为空)':'no resources')+'</td></tr>'); return; }
+    var maxEnd = 1;
+    resources.forEach(function(r){ var e=r.start+r.duration; if(e>maxEnd) maxEnd=e; });
+    var rows = '';
+    resources.forEach(function(r, i){
+      var leftPct=(r.start/maxEnd*100).toFixed(1), widPct=Math.max(0.5, r.duration/maxEnd*100).toFixed(1);
+      var tip='DNS '+r.dns+' | 连接 '+r.connect+' | TLS '+r.tls+' | TTFB '+r.ttfb+' | 下载 '+r.download+' ms';
+      var bar='<div style="position:relative;height:14px;background:#f1f3f5;border-radius:2px;"><div title="'+tip+'" style="position:absolute;left:'+leftPct+'%;width:'+widPct+'%;height:14px;background:#4dabf7;border-radius:2px;"></div></div>';
+      var name=(r.url.split('?')[0].split('/').pop()||r.url).slice(0,40);
+      rows+='<tr><td>'+(i+1)+'</td><td title="'+r.url+'">'+name+'</td><td>'+r.type+'</td><td>'+r.status+'</td><td>'+r.size+'KB</td><td>'+bar+'</td><td>'+r.duration+'</td></tr>';
+    });
+    $('#'+tbodyId).html(rows);
+  }
+  function collectWaterfall(){
+    if(!h5Ws()){ SwalFire('warning', lan=='cn'?'请选择页面':'Select a page', '', 3000); return; }
+    $.ajax({
+      url: Host+'/apm/h5/waterfall', type:'GET', cache:false, timeout:30000,
+      data:{ device:h5Device(), ws:h5Ws(), socket:h5Socket() },
+      beforeSend:function(){ SwalLoading(lan=='cn'?'采集中':'Collecting', lan=='cn'?'reload 抓资源瀑布流...':'Reloading...'); },
+      success:function(d){ swal.close(); if(d.status!=1){ SwalFire('error', lan=='cn'?'采集失败':'Failed', d.msg||'', 5000); return; } renderWaterfall(d.resources, 'wf-body'); },
       error:function(){ swal.close(); SwalFire('error','Server Error','',4000); }
     });
   }

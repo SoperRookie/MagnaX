@@ -199,6 +199,12 @@ class H5PerformanceMonitor(object):
             else:
                 events = []
             resources = self._build_waterfall(events)
+            # 落盘最近一次瀑布流,保存报告时归档(make_report 搬 .json),供报告页展示
+            try:
+                with open(os.path.join(f.report_dir, 'h5_waterfall.json'), 'w', encoding='utf-8') as fp:
+                    json.dump({'resources': resources}, fp)
+            except Exception as e:
+                logger.warning(f'[H5] 瀑布流落盘失败: {e}')
             return {'resources': resources, 'total': len(resources)}
         finally:
             self.client.close()
@@ -287,6 +293,7 @@ class H5PerformanceMonitor(object):
                 resp = p.get('response', {})
                 reqs[rid]['status'] = resp.get('status', 0)
                 reqs[rid]['type'] = p.get('type', reqs[rid]['type'])
+                reqs[rid]['timing'] = resp.get('timing') or {}  # 阶段耗时(DNS/连接/TLS/TTFB)
             elif m == 'Network.loadingFinished' and rid in reqs:
                 reqs[rid]['end'] = p.get('timestamp', reqs[rid]['end'])
                 reqs[rid]['size'] = int(p.get('encodedDataLength', 0) or 0)
@@ -299,10 +306,21 @@ class H5PerformanceMonitor(object):
         for r in reqs.values():
             start_ms = round((r['start'] - t0) * 1000, 1)
             dur_ms = round((r['end'] - r['start']) * 1000, 1)
+            # 阶段耗时(DNS/连接/TLS/TTFB/下载),来自 ResourceTiming(偏移量,-1=不适用)
+            tm = r.get('timing') or {}
+
+            def _ph(a, b):
+                sa, sb = tm.get(a, -1), tm.get(b, -1)
+                return round(sb - sa, 1) if (sa is not None and sb is not None and sa >= 0 and sb >= sa) else 0
+            rhe = tm.get('receiveHeadersEnd', -1)
+            download = round(max(0, dur_ms - rhe), 1) if (rhe is not None and rhe >= 0) else 0
             out.append({
                 'url': r['url'][:160], 'type': r['type'], 'status': r['status'],
                 'start': max(0, start_ms), 'duration': max(0, dur_ms),
                 'size': round(r['size'] / 1024, 2), 'failed': r['failed'],
+                'dns': _ph('dnsStart', 'dnsEnd'), 'connect': _ph('connectStart', 'connectEnd'),
+                'tls': _ph('sslStart', 'sslEnd'), 'ttfb': _ph('sendEnd', 'receiveHeadersEnd'),
+                'download': download,
             })
         out.sort(key=lambda x: x['start'])
         return out

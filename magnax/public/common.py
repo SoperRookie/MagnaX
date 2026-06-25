@@ -742,6 +742,15 @@ class File:
                     longtasks = json.loads(fp.read()).get('lt', [])
         except Exception:
             pass
+        # 资源瀑布流,来自 h5_waterfall.json
+        waterfall = []
+        try:
+            wpath = os.path.join(self.report_dir, scene, 'h5_waterfall.json')
+            if os.path.exists(wpath):
+                with open(wpath, encoding='utf-8') as fp:
+                    waterfall = json.loads(fp.read()).get('resources', [])
+        except Exception:
+            pass
 
         return {
             'app': result_json.get('app'),
@@ -760,6 +769,7 @@ class File:
             'frames': series('h5_frames.log'),
             'profile': profile_top,    # 热点函数表(可能为空)
             'longtasks': longtasks,    # 最近长任务归因(可能为空)
+            'waterfall': waterfall,    # 资源瀑布流(可能为空)
             # 宿主进程原生指标(发热归因);H5-only 会话无这些日志时返回空列表
             'hostCpuApp': series('h5_host_cpu_app.log'),
             'hostCpuSys': series('h5_host_cpu_sys.log'),
