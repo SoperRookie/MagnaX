@@ -715,12 +715,42 @@ class File:
             _, vals, _ = self.readLog(scene=scene, filename=fname)
             return vals[-1] if vals else 0
 
-        # 长任务日志存的是累计值,报告里换算成"每次新增"(与实时页一致)
-        lt_delta, prev = [], None
-        for pt in series('h5_longtask.log'):
-            cur = pt['y']
-            lt_delta.append({'x': pt['x'], 'y': 0 if (prev is None or cur < prev) else cur - prev})
-            prev = cur
+        def delta_series(fname):
+            """把累计值日志(长任务/布局/样式重算)换算成'每次采样新增'(与实时页一致)"""
+            out, prev = [], None
+            for pt in series(fname):
+                cur = pt['y']
+                out.append({'x': pt['x'], 'y': 0 if (prev is None or cur < prev) else cur - prev})
+                prev = cur
+            return out
+
+        # 热点剖析结果(若该会话开了实时剖析则有 h5_profile.json)
+        profile_top = []
+        try:
+            ppath = os.path.join(self.report_dir, scene, 'h5_profile.json')
+            if os.path.exists(ppath):
+                with open(ppath, encoding='utf-8') as fp:
+                    profile_top = json.loads(fp.read()).get('top', [])
+        except Exception:
+            pass
+        # 最近长任务明细(归因表),来自 h5_longtasks.json
+        longtasks = []
+        try:
+            lpath = os.path.join(self.report_dir, scene, 'h5_longtasks.json')
+            if os.path.exists(lpath):
+                with open(lpath, encoding='utf-8') as fp:
+                    longtasks = json.loads(fp.read()).get('lt', [])
+        except Exception:
+            pass
+        # 资源瀑布流,来自 h5_waterfall.json
+        waterfall = []
+        try:
+            wpath = os.path.join(self.report_dir, scene, 'h5_waterfall.json')
+            if os.path.exists(wpath):
+                with open(wpath, encoding='utf-8') as fp:
+                    waterfall = json.loads(fp.read()).get('resources', [])
+        except Exception:
+            pass
 
         return {
             'app': result_json.get('app'),
@@ -729,7 +759,17 @@ class File:
             'fps': series('h5_pagefps.log'),
             'heap': series('h5_heap.log'),
             'nodes': series('h5_nodes.log'),
-            'longtask': lt_delta,
+            'longtask': delta_series('h5_longtask.log'),
+            # 对标 Chrome Performance Monitor:监听器数(绝对) + 布局/样式重算(每次新增)
+            'listeners': series('h5_listeners.log'),
+            'layout': delta_series('h5_layout.log'),
+            'recalc': delta_series('h5_recalc.log'),
+            'inp': series('h5_inp.log'),
+            'documents': series('h5_documents.log'),
+            'frames': series('h5_frames.log'),
+            'profile': profile_top,    # 热点函数表(可能为空)
+            'longtasks': longtasks,    # 最近长任务归因(可能为空)
+            'waterfall': waterfall,    # 资源瀑布流(可能为空)
             # 宿主进程原生指标(发热归因);H5-only 会话无这些日志时返回空列表
             'hostCpuApp': series('h5_host_cpu_app.log'),
             'hostCpuSys': series('h5_host_cpu_sys.log'),
@@ -738,6 +778,7 @@ class File:
             'load': {
                 'fp': last('h5_fp.log'), 'lcp': last('h5_lcp.log'), 'fcp': last('h5_fcp.log'),
                 'ttfb': last('h5_ttfb.log'), 'dcl': last('h5_dcl.log'), 'load': last('h5_load.log'),
+                'tbt': last('h5_tbt.log'), 'tti': last('h5_tti.log'),
             },
         }
 

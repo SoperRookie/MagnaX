@@ -43,18 +43,23 @@
           <label class="form-label">{% if lan == 'cn' %}设备{% else %}Device{% endif %}</label>
           <select id="h5-device" class="select-device select2-selection--single" style="width:100%"></select>
         </div>
-        <div class="col-md-5">
-          <label class="form-label">{% if lan == 'cn' %}页面 (Chrome 已打开的 tab){% else %}Page tab{% endif %}</label>
+        <div class="col-md-3">
+          <label class="form-label">{% if lan == 'cn' %}调试目标 (Chrome / App WebView){% else %}Target{% endif %}</label>
+          <select id="h5-target" class="select2-selection--single" style="width:100%"></select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">{% if lan == 'cn' %}页面 tab{% else %}Page tab{% endif %}</label>
           <select id="h5-tab" class="select2-selection--single" style="width:100%"></select>
         </div>
-        <div class="col-md-4">
-          <label class="form-label">{% if lan == 'cn' %}宿主应用包名 (发热归因,留空则不采原生){% else %}Host package{% endif %}</label>
+        <div class="col-md-3">
+          <label class="form-label">{% if lan == 'cn' %}宿主应用包名 (发热归因){% else %}Host package{% endif %}</label>
           <input id="h5-host-pkg" type="text" class="form-control" value="com.android.chrome"
                  placeholder="com.android.chrome / 你的App包名">
         </div>
       </div>
       <div class="row">
         <div class="col">
+          <button class="btn btn-outline-secondary" onclick="refreshTargets()">{% if lan == 'cn' %}刷新目标{% else %}Targets{% endif %}</button>
           <button class="btn btn-outline-primary" onclick="refreshPages()">{% if lan == 'cn' %}刷新页面{% else %}Refresh{% endif %}</button>
           <button class="btn btn-primary" onclick="testLoad()">{% if lan == 'cn' %}测加载{% else %}Load{% endif %}</button>
           <button class="btn btn-success" id="btn-start" onclick="startMonitor()">{% if lan == 'cn' %}开始监控{% else %}Start{% endif %}</button>
@@ -76,6 +81,8 @@
       <div class="col h5-stat"><div class="v" id="m-dcl">-</div><div class="l">DCL (ms)</div></div>
       <div class="col h5-stat"><div class="v" id="m-load">-</div><div class="l">Load (ms)</div></div>
       <div class="col h5-stat"><div class="v" id="m-cls">-</div><div class="l">CLS</div></div>
+      <div class="col h5-stat"><div class="v" id="m-tbt">-</div><div class="l">TBT (ms)</div></div>
+      <div class="col h5-stat"><div class="v" id="m-tti">-</div><div class="l">{% if lan == 'cn' %}TTI 近似 (ms){% else %}TTI~ (ms){% endif %}</div></div>
       <div class="col h5-stat"><div class="v" id="m-heap">-</div><div class="l">{% if lan == 'cn' %}JS堆 (MB){% else %}JS Heap{% endif %}</div></div>
       <div class="col h5-stat"><div class="v" id="m-nodes">-</div><div class="l">{% if lan == 'cn' %}DOM节点{% else %}Nodes{% endif %}</div></div>
     </div>
@@ -88,6 +95,20 @@
     <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-heap" class="h5-chart"></div></div></div></div>
     <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-nodes" class="h5-chart"></div></div></div></div>
     <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-longtask" class="h5-chart"></div></div></div></div>
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-layout" class="h5-chart"></div></div></div></div>
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-listeners" class="h5-chart"></div></div></div></div>
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-inp" class="h5-chart"></div></div></div></div>
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-docframes" class="h5-chart"></div></div></div></div>
+  </div>
+
+  <!-- 长任务归因表(最近长任务: 时长 + 来源) -->
+  <div class="card mb-3"><div class="card-header"><h3 class="card-title">{% if lan == 'cn' %}最近长任务 (归因){% else %}Recent Long Tasks{% endif %}</h3></div>
+    <div class="card-body table-responsive">
+      <table class="table table-sm table-vcenter">
+        <thead><tr><th>#</th><th>{% if lan == 'cn' %}时长 (ms){% else %}Duration{% endif %}</th><th>{% if lan == 'cn' %}来源 (脚本/容器){% else %}Attribution{% endif %}</th></tr></thead>
+        <tbody id="lt-body"><tr><td colspan="3" class="text-muted">{% if lan == 'cn' %}监控中实时更新{% else %}updates while monitoring{% endif %}</td></tr></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- 运行时曲线: 宿主进程(原生),用于发热归因 -->
@@ -98,6 +119,52 @@
     <div class="col-md-4 mb-3"><div class="card"><div class="card-body"><div id="chart-htemp" class="h5-chart"></div></div></div></div>
   </div>
 
+  <!-- 资源瀑布流(reload 采集;canvas 游戏页通常为空) -->
+  <div class="card mb-3"><div class="card-body">
+    <div class="mb-2 d-flex align-items-center flex-wrap">
+      <button class="btn btn-primary" onclick="collectWaterfall()">{% if lan == 'cn' %}采集一次 (reload){% else %}Waterfall{% endif %}</button>
+      <label class="form-check form-switch mb-0 ms-3">
+        <input id="wf-live" class="form-check-input" type="checkbox">
+        <span class="form-check-label">{% if lan == 'cn' %}随监控实时 (不reload,抓当前活动){% else %}Live{% endif %}</span>
+      </label>
+      <span class="text-muted ms-3" style="font-size:12px;">{% if lan == 'cn' %}条形悬停看 DNS/连接/TLS/TTFB/下载 分解{% else %}hover bar for phases{% endif %}</span>
+    </div>
+    <div class="table-responsive"><table class="table table-sm table-vcenter">
+      <thead><tr><th>#</th><th>{% if lan == 'cn' %}资源{% else %}Resource{% endif %}</th><th>{% if lan == 'cn' %}类型{% else %}Type{% endif %}</th><th>{% if lan == 'cn' %}状态{% else %}Status{% endif %}</th><th>{% if lan == 'cn' %}大小{% else %}Size{% endif %}</th><th style="width:38%">{% if lan == 'cn' %}瀑布{% else %}Waterfall{% endif %}</th><th>{% if lan == 'cn' %}总(ms){% else %}Total{% endif %}</th></tr></thead>
+      <tbody id="wf-body"><tr><td colspan="7" class="text-muted">{% if lan == 'cn' %}点"采集资源瀑布流"{% else %}Click Waterfall{% endif %}</td></tr></tbody>
+    </table></div>
+  </div></div>
+
+  <!-- JS 热点剖析:剖析N秒,列出最耗CPU的函数 -->
+  <h3 class="mb-2">{% if lan == 'cn' %}JS 热点剖析 (哪段代码烧 CPU){% else %}JS CPU Profile{% endif %}</h3>
+  <div class="card mb-3"><div class="card-body">
+    <div class="row g-2 align-items-end mb-2">
+      <div class="col-auto">
+        <label class="form-label">{% if lan == 'cn' %}时长(秒){% else %}Seconds{% endif %}</label>
+        <input id="h5-prof-sec" type="number" class="form-control" value="5" min="1" max="30" style="width:90px">
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-primary" onclick="profileH5()">{% if lan == 'cn' %}剖析一次{% else %}Profile{% endif %}</button>
+      </div>
+      <div class="col-auto">
+        <label class="form-check form-switch mt-3">
+          <input id="h5-prof-live" class="form-check-input" type="checkbox">
+          <span class="form-check-label">{% if lan == 'cn' %}随监控实时剖析{% else %}Live with monitor{% endif %}</span>
+        </label>
+      </div>
+      <div class="col text-muted" style="font-size:12px;">{% if lan == 'cn' %}勾选后随"开始监控"滚动剖析、"停止"即停;(idle)高=CPU空闲多,瓶颈在渲染而非JS{% else %}Keep the page active while profiling{% endif %}</div>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm table-vcenter">
+        <thead><tr>
+          <th>#</th><th>{% if lan == 'cn' %}函数{% else %}Function{% endif %}</th>
+          <th>Self %</th><th>Self ms</th><th>{% if lan == 'cn' %}文件:行{% else %}File:Line{% endif %}</th>
+        </tr></thead>
+        <tbody id="h5-prof-body"><tr><td colspan="5" class="text-muted">{% if lan == 'cn' %}点"开始剖析"采集{% else %}Click Profile{% endif %}</td></tr></tbody>
+      </table>
+    </div>
+  </div></div>
+
 </div>
 {% endblock %}
 
@@ -107,10 +174,13 @@
   var h5Running = false;   // 监控运行标志(自配速递归轮询用)
   var charts = {};
   var lastLongtask = null;  // 上次的长任务累计值,用于算每次采样的新增量
+  var lastLayout = null, lastRecalc = null;  // 布局/样式重算累计值,算每次新增
   var h5PageUrls = {};      // ws -> 页面url,保存报告时用作页面标识
+  var h5TargetPkgs = {};    // socket -> 包名(选 WebView 时自动填宿主包名)
 
   function h5Device(){ return $('#h5-device').val(); }
   function h5Ws(){ return $('#h5-tab').val(); }
+  function h5Socket(){ return $('#h5-target').val() || ''; }
 
   // 初始化:拉安卓设备列表
   function initH5Env(){
@@ -121,9 +191,32 @@
         if(data['status'] != 1){ SwalFire('error', lan=='cn'?'连接失败':'Connect failed', lan=='cn'?'未发现安卓设备':'No device', 4000); return; }
         for(var i=0;i<data['devices'].length;i++){ $('#h5-device').append('<option>'+data['devices'][i].trim()+'</option>'); }
         $('#h5-device').trigger('change');
-        refreshPages();
+        refreshTargets();
       },
       error:function(){ SwalFire('error','Server Error','',4000); }
+    });
+  }
+
+  // 刷新调试目标(Chrome + 各 App WebView)
+  function refreshTargets(){
+    if(!h5Device()) return;
+    $.ajax({
+      url: Host + '/device/h5/sockets', type:'GET', cache:false, timeout:15000,
+      data:{ device: h5Device() },
+      beforeSend:function(){ SwalLoading(lan=='cn'?'读取目标':'Loading', lan=='cn'?'正在读取调试目标(Chrome/WebView)':'Reading targets'); },
+      success:function(data){
+        swal.close();
+        $('#h5-target').empty(); h5TargetPkgs = {};
+        if(data['status'] != 1){ SwalFire('error', lan=='cn'?'读取失败':'Failed', data['msg']||'', 5000); return; }
+        var ts = data['targets'] || [];
+        if(!ts.length){ SwalFire('warning', lan=='cn'?'无调试目标':'No target', lan=='cn'?'确认 Chrome 已开页面、或 App 已开 WebView 调试':'Open Chrome/WebView debug', 5000); return; }
+        ts.forEach(function(t){
+          $('#h5-target').append('<option value="'+t.socket+'">'+t.label+'</option>');
+          h5TargetPkgs[t.socket] = t.pkg || '';
+        });
+        $('#h5-target').trigger('change');  // 触发 change 处理:自动填包名 + 刷新该目标页面
+      },
+      error:function(){ swal.close(); SwalFire('error','Server Error','',4000); }
     });
   }
 
@@ -132,8 +225,8 @@
     if(!h5Device()) return;
     $.ajax({
       url: Host + '/device/h5/pages', type:'GET', cache:false, timeout:15000,
-      data:{ device: h5Device() },
-      beforeSend:function(){ SwalLoading(lan=='cn'?'读取页面':'Loading', lan=='cn'?'正在读取 Chrome 页面列表':'Reading Chrome tabs'); },
+      data:{ device: h5Device(), socket: h5Socket() },
+      beforeSend:function(){ SwalLoading(lan=='cn'?'读取页面':'Loading', lan=='cn'?'正在读取页面列表':'Reading tabs'); },
       success:function(data){
         swal.close();
         $('#h5-tab').empty();
@@ -156,14 +249,15 @@
     if(!h5Ws()){ SwalFire('warning', lan=='cn'?'请选择页面':'Select a page', '', 3000); return; }
     $.ajax({
       url: Host + '/apm/h5/load', type:'GET', cache:false, timeout:60000,
-      data:{ device: h5Device(), ws: h5Ws() },
+      data:{ device: h5Device(), ws: h5Ws(), socket: h5Socket() },
       beforeSend:function(){ SwalLoading(lan=='cn'?'采集中':'Collecting', lan=='cn'?'正在 reload 页面采集加载指标':'Reloading & measuring'); },
       success:function(d){
         swal.close();
         if(d['status'] != 1){ SwalFire('error', lan=='cn'?'采集失败':'Failed', d['msg']||'', 5000); return; }
         $('#m-fp').text(d.fp); $('#m-lcp').text(d.lcp); $('#m-fcp').text(d.fcp);
         $('#m-ttfb').text(d.ttfb); $('#m-dcl').text(d.dcl); $('#m-load').text(d.load);
-        $('#m-cls').text(d.cls); $('#m-heap').text(d.heap); $('#m-nodes').text(d.nodes);
+        $('#m-cls').text(d.cls); $('#m-tbt').text(d.tbt); $('#m-tti').text(d.tti);
+        $('#m-heap').text(d.heap); $('#m-nodes').text(d.nodes);
       },
       error:function(){ swal.close(); SwalFire('error','Server Error','',4000); }
     });
@@ -199,6 +293,12 @@
     charts.heap = mkChart('chart-heap', lan=='cn'?'JS堆内存 (MB)':'JS Heap (MB)', '#206bc4', ' MB');
     charts.nodes = mkChart('chart-nodes', lan=='cn'?'DOM 节点数':'DOM Nodes', '#f59f00', '');
     charts.longtask = mkChart('chart-longtask', lan=='cn'?'长任务 (每次新增)':'Long Tasks (new)', '#d63939', '');
+    charts.layout = mkChart2('chart-layout', lan=='cn'?'布局 / 样式重算 (每次新增)':'Layout / Recalc (new)',
+      [lan=='cn'?'布局':'layout', lan=='cn'?'样式重算':'recalc'], ['#d6336c', '#7048e8'], '');
+    charts.listeners = mkChart('chart-listeners', lan=='cn'?'JS 事件监听器数':'JS Listeners', '#0ca678', '');
+    charts.inp = mkChart('chart-inp', lan=='cn'?'INP 交互延迟 (ms,越低越好)':'INP (ms)', '#e8590c', ' ms');
+    charts.docframes = mkChart2('chart-docframes', 'Documents / Frames',
+      ['Documents', 'Frames'], ['#1098ad', '#f76707'], '');
     // 宿主进程(原生)
     charts.hcpu = mkChart2('chart-hcpu', lan=='cn'?'宿主 CPU %':'Host CPU %',
       [lan=='cn'?'应用':'app', lan=='cn'?'系统':'sys'], ['#d63939', '#f59f00'], ' %');
@@ -232,7 +332,7 @@
     pollNative();  // 同一轮询周期叠加宿主原生指标
     $.ajax({
       url: Host + '/apm/h5/runtime', type:'GET', cache:false, timeout:20000,
-      data:{ device: h5Device(), ws: h5Ws() },
+      data:{ device: h5Device(), ws: h5Ws(), socket: h5Socket() },
       success:function(d){
         if(d['status'] != 1) return;
         pushPoint(charts.fps, d.fps);
@@ -243,6 +343,23 @@
         var delta = (lastLongtask === null || cur < lastLongtask) ? 0 : (cur - lastLongtask);
         lastLongtask = cur;
         pushPoint(charts.longtask, delta);
+        // 布局/样式重算:累计值转每次新增(满帧重绘时这两个会很高)
+        var cl = Number(d.layoutCount);
+        pushPoint(charts.layout, (lastLayout === null || cl < lastLayout) ? 0 : (cl - lastLayout), 0);
+        lastLayout = cl;
+        var cr = Number(d.recalcCount);
+        pushPoint(charts.layout, (lastRecalc === null || cr < lastRecalc) ? 0 : (cr - lastRecalc), 1);
+        lastRecalc = cr;
+        pushPoint(charts.listeners, d.listeners);
+        pushPoint(charts.inp, d.inp);
+        pushPoint(charts.docframes, d.documents, 0);
+        pushPoint(charts.docframes, d.frames, 1);
+        // 长任务归因表(最近)
+        var lt = d.lt || [], rows = '';
+        lt.slice().reverse().forEach(function(x, i){
+          rows += '<tr><td>'+(i+1)+'</td><td>'+x.dur+'</td><td class="text-muted">'+x.at+'</td></tr>';
+        });
+        if(rows){ $('#lt-body').html(rows); }
       },
       complete:function(){
         // 自配速:本次回来(成功/失败/超时)后再排下一次,避免请求堆积;单次失败也不断链
@@ -254,11 +371,13 @@
   function startMonitor(){
     if(!h5Ws()){ SwalFire('warning', lan=='cn'?'请选择页面':'Select a page', '', 3000); return; }
     if(h5Running) return;
-    lastLongtask = null;  // 每次开始监控重置长任务基准
+    lastLongtask = null; lastLayout = null; lastRecalc = null;  // 重置累计基准
     if(!charts.fps) initCharts();
     $('#btn-start').prop('disabled', true); $('#btn-stop').prop('disabled', false);
     h5Running = true;
     pollRuntime();  // 自配速:每次轮询在 complete 里排下一次,不会堆积
+    if($('#h5-prof-live').is(':checked')){ runProfile(true); }  // 勾选则随监控滚动剖析
+    if($('#wf-live').is(':checked')){ wfFirstWindow = true; runWaterfall(true); }  // 随监控滚动抓网络活动(累积整会话)
   }
 
   function stopMonitor(){
@@ -271,6 +390,7 @@
   function saveH5Report(){
     stopMonitor();
     var url = h5PageUrls[h5Ws()] || h5Ws() || 'H5';
+    url = url.split('?')[0];  // 去掉超长查询参数(session/签名),只留 域名+路径,作报告标识
     $.ajax({
       url: Host + '/apm/h5/save', type:'GET', cache:false, timeout:30000,
       data:{ device: h5Device(), url: url },
@@ -284,6 +404,101 @@
     });
   }
 
-  $(document).ready(function(){ initH5Env(); });
+  // 资源瀑布流渲染(条形按 start/duration 定位,悬停看阶段分解)
+  function renderWaterfall(resources, tbodyId){
+    if(!resources || !resources.length){ $('#'+tbodyId).html('<tr><td colspan="7" class="text-muted">'+(lan=='cn'?'无资源 (canvas 游戏页通常为空)':'no resources')+'</td></tr>'); return; }
+    var minStart = Infinity, maxEnd = 0;
+    resources.forEach(function(r){ if(r.start<minStart) minStart=r.start; var e=r.start+r.duration; if(e>maxEnd) maxEnd=e; });
+    var span = (maxEnd - minStart) || 1;
+    var rows = '';
+    resources.forEach(function(r, i){
+      var leftPct=((r.start-minStart)/span*100).toFixed(1), widPct=Math.max(0.5, r.duration/span*100).toFixed(1);
+      var tip='DNS '+r.dns+' | 连接 '+r.connect+' | TLS '+r.tls+' | TTFB '+r.ttfb+' | 下载 '+r.download+' ms';
+      var bar='<div style="position:relative;height:14px;background:#f1f3f5;border-radius:2px;"><div title="'+tip+'" style="position:absolute;left:'+leftPct+'%;width:'+widPct+'%;height:14px;background:#4dabf7;border-radius:2px;"></div></div>';
+      var name=(r.url.split('?')[0].split('/').pop()||r.url).slice(0,40);
+      rows+='<tr><td>'+(i+1)+'</td><td title="'+r.url+'">'+name+'</td><td>'+r.type+'</td><td>'+r.status+'</td><td>'+r.size+'KB</td><td>'+bar+'</td><td>'+r.duration+'</td></tr>';
+    });
+    $('#'+tbodyId).html(rows);
+  }
+  var h5Wfing = false;       // 防止瀑布流采集重叠
+  var wfFirstWindow = false;  // 实时模式首窗:重置累积(新会话不接上一会话)
+  // rolling=true: 随监控滚动抓当前网络活动(不reload,累积整个会话); false: 手动reload完整采集
+  function runWaterfall(rolling){
+    if(h5Wfing) return;
+    if(!h5Ws()){ if(!rolling) SwalFire('warning', lan=='cn'?'请选择页面':'Select a page', '', 3000); return; }
+    h5Wfing = true;
+    var reset = (rolling && wfFirstWindow) ? '1' : '0';
+    if(rolling){ wfFirstWindow = false; }
+    $.ajax({
+      url: Host+'/apm/h5/waterfall', type:'GET', cache:false, timeout: rolling?15000:35000,
+      data:{ device:h5Device(), ws:h5Ws(), socket:h5Socket(), reload: rolling?'false':'true', seconds: rolling?3:6, reset: reset },
+      beforeSend:function(){ if(!rolling) SwalLoading(lan=='cn'?'采集中':'Collecting', lan=='cn'?'reload 抓资源瀑布流...':'Reloading...'); },
+      success:function(d){
+        if(d.status==1){ renderWaterfall(d.resources, 'wf-body'); }
+        else if(!rolling){ SwalFire('error', lan=='cn'?'采集失败':'Failed', d.msg||'', 5000); }
+      },
+      error:function(){ if(!rolling) SwalFire('error','Server Error','',4000); },
+      complete:function(){
+        if(!rolling) swal.close();
+        h5Wfing = false;
+        if(rolling && h5Running && $('#wf-live').is(':checked')){ setTimeout(function(){ runWaterfall(true); }, 200); }
+      }
+    });
+  }
+  function collectWaterfall(){ runWaterfall(false); }  // 手动 reload 完整采集
+
+  // JS 热点剖析:剖析 N 秒 -> 列出最耗 CPU 的函数
+  var h5Profiling = false;  // 防止剖析重叠(手动/滚动共用一把锁)
+
+  function renderProfTable(top){
+    var rows = '';
+    (top||[]).forEach(function(t, i){
+      rows += '<tr><td>'+(i+1)+'</td><td><code>'+t['function']+'</code></td><td>'+t.selfPercent+'%</td><td>'+t.selfMs+'</td><td class="text-muted">'+t.url+':'+t.line+'</td></tr>';
+    });
+    $('#h5-prof-body').html(rows || '<tr><td colspan="5" class="text-muted">'+(lan=='cn'?'无数据':'no data')+'</td></tr>');
+  }
+
+  // rolling=true: 随监控滚动剖析(不弹框、自动续下一轮); false: 手动剖析一次
+  function runProfile(rolling){
+    if(h5Profiling) return;
+    if(!h5Ws()){ if(!rolling) SwalFire('warning', lan=='cn'?'请选择页面':'Select a page', '', 3000); return; }
+    var sec = parseInt($('#h5-prof-sec').val()) || 5;
+    h5Profiling = true;
+    $.ajax({
+      url: Host + '/apm/h5/profile', type:'GET', cache:false, timeout:(sec+40)*1000,
+      data:{ device: h5Device(), ws: h5Ws(), socket: h5Socket(), seconds: sec },
+      beforeSend:function(){ if(!rolling) SwalLoading(lan=='cn'?'剖析中':'Profiling', lan=='cn'?('采集 '+sec+' 秒 CPU 剖析,请让页面正常跑...'):('Profiling '+sec+'s...')); },
+      success:function(d){
+        if(d.status == 1){ renderProfTable(d.top); }
+        else if(!rolling){ SwalFire('error', lan=='cn'?'剖析失败':'Failed', d.msg||'', 5000); }
+      },
+      error:function(){ if(!rolling) SwalFire('error','Server Error','',4000); },
+      complete:function(){
+        if(!rolling) swal.close();
+        h5Profiling = false;
+        // 滚动:监控中且仍勾选,则接着剖析下一轮
+        if(rolling && h5Running && $('#h5-prof-live').is(':checked')){ setTimeout(function(){ runProfile(true); }, 200); }
+      }
+    });
+  }
+  function profileH5(){ runProfile(false); }  // 手动剖析一次
+
+  $(document).ready(function(){
+    // 切换调试目标:自动填宿主包名 + 刷新该目标的页面列表
+    $('#h5-target').on('change', function(){
+      var pkg = h5TargetPkgs[h5Socket()];
+      if(pkg){ $('#h5-host-pkg').val(pkg); }
+      refreshPages();
+    });
+    // 监控进行中勾上"实时剖析"时,立即开始滚动剖析
+    $('#h5-prof-live').on('change', function(){
+      if($(this).is(':checked') && h5Running && !h5Profiling){ runProfile(true); }
+    });
+    // 监控进行中勾上"瀑布流实时"时,立即开始滚动抓取(重置累积)
+    $('#wf-live').on('change', function(){
+      if($(this).is(':checked') && h5Running && !h5Wfing){ wfFirstWindow = true; runWaterfall(true); }
+    });
+    initH5Env();
+  });
 </script>
 {% endblock %}

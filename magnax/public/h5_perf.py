@@ -11,6 +11,7 @@ Web Vitals(LCP/CLS/长任务)与页面 FPS 通过 PerformanceObserver / rAF 注�
 因此运行时轮询可"每次重连"而不丢 FPS。
 """
 import os
+import re
 import json
 import datetime
 
@@ -26,6 +27,7 @@ INJECT_JS = r'''(function(){
   if (window.__h5_inited) return;
   window.__h5_inited = true;
   window.__h5lcp = 0; window.__h5cls = 0; window.__h5longtask = 0; window.__h5fps = 0;
+  window.__h5inp = 0; window.__h5tbt = 0; window.__h5lt = []; window.__h5ltspans = [];
   try {
     new PerformanceObserver(function(l){
       var es = l.getEntries(); var e = es[es.length-1];
@@ -34,9 +36,45 @@ INJECT_JS = r'''(function(){
     new PerformanceObserver(function(l){
       for (var e of l.getEntries()) { if (!e.hadRecentInput) window.__h5cls += e.value; }
     }).observe({type:'layout-shift', buffered:true});
+    var _ltPush = function(e, src){
+      window.__h5longtask += 1;
+      window.__h5lt.push({dur: Math.round(e.duration), at: src});
+      if (window.__h5lt.length > 30) window.__h5lt.shift();
+      window.__h5ltspans.push([Math.round(e.startTime), Math.round(e.startTime + e.duration)]);  // 供TTI计算
+    };
+    var _loaf = false;
+    try {
+      // Long Animation Frames:带脚本级归因(sourceURL/函数名),比经典 longtask 强
+      new PerformanceObserver(function(l){
+        for (var e of l.getEntries()){
+          window.__h5tbt += (e.blockingDuration || 0);
+          var src = 'self';
+          if (e.scripts && e.scripts.length){
+            var top = e.scripts.reduce(function(a,b){ return (b.duration||0)>(a.duration||0)?b:a; });
+            var u = top.sourceURL ? top.sourceURL.split('?')[0].split('/').pop() : '';
+            src = (u + ' ' + (top.sourceFunctionName||'')).trim() || top.invokerType || top.invoker || 'script';
+          }
+          _ltPush(e, src);
+        }
+      }).observe({type:'long-animation-frame', buffered:true});
+      _loaf = true;
+    } catch (e) {}
+    if (!_loaf) {  // LoAF 不支持则回退经典 longtask(归因只到容器级)
+      new PerformanceObserver(function(l){
+        for (var e of l.getEntries()){
+          window.__h5tbt += Math.max(0, e.duration - 50);
+          var a = (e.attribution && e.attribution[0]) || {};
+          _ltPush(e, a.containerName || a.containerSrc || a.containerType || 'self');
+        }
+      }).observe({type:'longtask', buffered:true});
+    }
+    // INP/FID:交互响应延迟,取最大(近似 INP)
     new PerformanceObserver(function(l){
-      window.__h5longtask += l.getEntries().length;
-    }).observe({type:'longtask', buffered:true});
+      for (var e of l.getEntries()){ var d = Math.round(e.duration); if (d > window.__h5inp) window.__h5inp = d; }
+    }).observe({type:'event', durationThreshold:16, buffered:true});
+    new PerformanceObserver(function(l){
+      for (var e of l.getEntries()){ var d = Math.round(e.processingStart - e.startTime); if (d > window.__h5inp) window.__h5inp = d; }
+    }).observe({type:'first-input', buffered:true});
   } catch (e) {}
   var frames = 0, last = performance.now();
   function loop(now){
@@ -51,14 +89,25 @@ INJECT_JS = r'''(function(){
 LOAD_JS = r'''(function(){
   var nav = performance.getEntriesByType('navigation')[0] || {};
   var paint = {}; performance.getEntriesByType('paint').forEach(function(p){paint[p.name]=p.startTime;});
+  var fcp = paint['first-contentful-paint'] || 0;
+  // TTI 近似:FCP 之后,找第一个 5s 内无长任务的安静窗口,TTI=该窗口前最后一个长任务结束(无则 FCP)
+  var spans = (window.__h5ltspans || []).filter(function(s){ return s[1] > fcp; }).sort(function(a,b){return a[0]-b[0];});
+  var tti = fcp;
+  for (var i=0;i<spans.length;i++){
+    tti = spans[i][1];
+    var nextStart = (i+1<spans.length) ? spans[i+1][0] : Infinity;
+    if (nextStart - spans[i][1] >= 5000) break;
+  }
   return JSON.stringify({
     ttfb: Math.max(0, Math.round((nav.responseStart||0) - (nav.requestStart||0))),
     dcl:  Math.max(0, Math.round((nav.domContentLoadedEventEnd||0) - (nav.startTime||0))),
     load: Math.max(0, Math.round((nav.loadEventEnd||0) - (nav.startTime||0))),
     fp:   paint['first-paint'] ? Math.round(paint['first-paint']) : 0,
-    fcp:  paint['first-contentful-paint'] ? Math.round(paint['first-contentful-paint']) : 0,
+    fcp:  Math.round(fcp),
     lcp:  Math.round(window.__h5lcp || 0),
-    cls:  Number((window.__h5cls || 0).toFixed(4))
+    cls:  Number((window.__h5cls || 0).toFixed(4)),
+    tbt:  Math.round(window.__h5tbt || 0),
+    tti:  Math.round(tti)
   });
 })()'''
 
@@ -67,7 +116,9 @@ RUNTIME_JS = r'''(function(){
   return JSON.stringify({
     fps: Math.round(window.__h5fps || 0),
     cls: Number((window.__h5cls || 0).toFixed(4)),
-    longtask: window.__h5longtask || 0
+    longtask: window.__h5longtask || 0,
+    inp: Math.round(window.__h5inp || 0),
+    lt: (window.__h5lt || []).slice(-10)
   });
 })()'''
 
@@ -75,18 +126,23 @@ RUNTIME_JS = r'''(function(){
 class H5PerformanceMonitor(object):
     """H5 性能采集。每次采集独立重连 CDP(与 iOS 方案一致,避免长连接泄漏)。"""
 
-    def __init__(self, deviceId, url=None, wsUrl=None, noLog=True, local_port=9333):
+    def __init__(self, deviceId, url=None, wsUrl=None, noLog=True, local_port=9333, socket=None):
         self.deviceId = deviceId
         self.url = url
         self.wsUrl = wsUrl
         self.noLog = noLog
-        self.client = CDPClient(deviceId, local_port=local_port)
+        # socket 指定调试目标(Chrome=chrome_devtools_remote 或 App 的 webview_devtools_remote_<pid>);
+        # forward 用它,这样选 WebView 时隧道指向对的 socket
+        self.client = CDPClient(deviceId, local_port=local_port, socket_name=socket)
 
     def _pick_ws(self):
         if self.wsUrl:
             # 直接给了 ws 地址时,仍需确保 adb forward 隧道在(否则 127.0.0.1:port 连不上)
             self.client._forward()
-            return self.wsUrl
+            # 把 ws 里的端口改成本实例的转发端口,隔离不同采集器(运行时9333/剖析9334),
+            # 避免并发时共用端口互相 remove forward 打断对方
+            return re.sub(r'(://[^:/]+:)\d+', lambda m: m.group(1) + str(self.client.local_port),
+                          self.wsUrl, count=1)
         pages = self.client.list_pages()
         if not pages:
             raise CDPError('没有可调试的页面(确认 Chrome 已打开 H5、非无痕模式)')
@@ -98,12 +154,20 @@ class H5PerformanceMonitor(object):
         return p['webSocketDebuggerUrl']
 
     def _metrics(self):
-        """CDP Performance 域取 JS堆/DOM节点(不依赖页面 flag)"""
+        """CDP Performance 域取一组指标(对标 Chrome Performance Monitor,不依赖页面 flag):
+        JS堆/DOM节点/事件监听器数/累计布局数/累计样式重算数。
+        layout/recalc 是累计值,前端按相邻差算成'每秒'。"""
         self.client.call('Performance.enable')
         ms = {m['name']: m['value'] for m in self.client.call('Performance.getMetrics').get('metrics', [])}
-        heap = round(ms.get('JSHeapUsedSize', 0) / 1024 / 1024, 2)
-        nodes = int(ms.get('Nodes', 0))
-        return heap, nodes
+        return {
+            'heap': round(ms.get('JSHeapUsedSize', 0) / 1024 / 1024, 2),
+            'nodes': int(ms.get('Nodes', 0)),
+            'listeners': int(ms.get('JSEventListeners', 0)),
+            'layoutCount': int(ms.get('LayoutCount', 0)),
+            'recalcCount': int(ms.get('RecalcStyleCount', 0)),
+            'documents': int(ms.get('Documents', 0)),
+            'frames': int(ms.get('Frames', 0)),
+        }
 
     def collectLoad(self, do_reload=True):
         """reload 取一次完整加载指标(白屏/首屏/FCP/LCP/...)"""
@@ -121,7 +185,8 @@ class H5PerformanceMonitor(object):
             else:
                 self.client.evaluate(INJECT_JS)
             data = json.loads(self.client.evaluate(LOAD_JS))
-            data['heap'], data['nodes'] = self._metrics()
+            m = self._metrics()
+            data['heap'] = m['heap']; data['nodes'] = m['nodes']
             if not self.noLog:
                 self._log_load(data)
             return data
@@ -135,30 +200,98 @@ class H5PerformanceMonitor(object):
             self.client.call('Runtime.enable')
             self.client.evaluate(INJECT_JS)  # 幂等:确保 FPS/Observer 已注入
             data = json.loads(self.client.evaluate(RUNTIME_JS))
-            data['heap'], data['nodes'] = self._metrics()
+            data.update(self._metrics())  # heap/nodes/listeners/layoutCount/recalcCount
             if not self.noLog:
                 self._log_runtime(data)
             return data
         finally:
             self.client.close()
 
-    def collectWaterfall(self, do_reload=True, capture_seconds=6):
-        """reload 抓资源瀑布流(每个资源 url/类型/状态/起止/耗时/大小)。固定窗口采集
-        capture_seconds 秒,兼顾传统页面与 SPA(素材在 load 后下载)。
-        注意:canvas 游戏(如 Egret)不暴露标准资源加载,瀑布流会是空的。"""
+    def collectWaterfall(self, do_reload=True, capture_seconds=6, reset=False):
+        """资源瀑布流。do_reload=True:reload 抓完整加载(覆盖落盘);do_reload=False:不 reload
+        抓本窗口当前网络活动,并累积整个会话(按 url+绝对时间去重排序),保存完整时间线。
+        reset=True:实时模式从头开始(新监控会话用,不接上一会话)。"""
         self.client.connect(self._pick_ws())
         try:
             self.client.call('Page.enable')
             self.client.call('Network.enable')
-            if do_reload:
-                self.client.call('Page.reload', {'ignoreCache': True})
-                events = self.client.drain_duration(capture_seconds)
-            else:
-                events = []
+            self.client.call('Page.reload', {'ignoreCache': True}) if do_reload else None
+            events = self.client.drain_duration(capture_seconds)
             resources = self._build_waterfall(events)
+            wf_path = os.path.join(f.report_dir, 'h5_waterfall.json')
+            if not do_reload:
+                # 实时模式:累积整个会话(按 url+start 去重,按时间排序),不只存最后一窗
+                try:
+                    existing = []
+                    if not reset and os.path.exists(wf_path):
+                        existing = json.load(open(wf_path, encoding='utf-8')).get('resources', [])
+                    seen = {(r['url'], r['start']) for r in existing}
+                    for r in resources:
+                        k = (r['url'], r['start'])
+                        if k not in seen:
+                            existing.append(r); seen.add(k)
+                    existing.sort(key=lambda x: x['start'])
+                    resources = existing[-1000:]  # 防止无限增长
+                except Exception as e:
+                    logger.warning(f'[H5] 瀑布流累积失败: {e}')
+            # 落盘(reload 覆盖为本次完整;实时已是累积),保存报告时归档供报告页展示
+            try:
+                with open(wf_path, 'w', encoding='utf-8') as fp:
+                    json.dump({'resources': resources}, fp)
+            except Exception as e:
+                logger.warning(f'[H5] 瀑布流落盘失败: {e}')
             return {'resources': resources, 'total': len(resources)}
         finally:
             self.client.close()
+
+    def collectProfile(self, seconds=5):
+        """CPU 剖析 seconds 秒,聚合每个函数的 self-time,返回 Top 热点函数。
+        直接回答'哪段 JS 在烧 CPU/发热'。需页面在剖析期间正常运行(游戏渲染中)。"""
+        self.client.connect(self._pick_ws())
+        try:
+            self.client.call('Profiler.enable')
+            self.client.call('Profiler.setSamplingInterval', {'interval': 1000})  # 1ms/样本
+            self.client.call('Profiler.start')
+            import time as _t
+            _t.sleep(max(1, min(int(seconds), 30)))
+            r = self.client.call('Profiler.stop', timeout=40)
+            top = self._top_functions(r.get('profile', {}))
+            # 落盘最近一次剖析结果,保存报告时归档(make_report 会搬 .json),供报告页展示热点表
+            try:
+                with open(os.path.join(f.report_dir, 'h5_profile.json'), 'w', encoding='utf-8') as fp:
+                    json.dump({'top': top}, fp)
+            except Exception as e:
+                logger.warning(f'[H5] 剖析结果落盘失败: {e}')
+            return {'top': top}
+        finally:
+            self.client.close()
+
+    @staticmethod
+    def _top_functions(profile, top_n=20):
+        """从 CPU profile 聚合 self-time(hitCount)到函数级,返回 Top N。
+        采样间隔 1ms,故 hitCount≈自耗时(ms);selfPercent 为占总采样比。"""
+        nodes = profile.get('nodes', []) or []
+        total = sum(n.get('hitCount', 0) for n in nodes) or 1
+        agg = {}
+        for n in nodes:
+            hits = n.get('hitCount', 0)
+            if hits <= 0:
+                continue
+            cf = n.get('callFrame', {})
+            name = cf.get('functionName') or '(anonymous)'
+            url = cf.get('url', '') or ''
+            line = cf.get('lineNumber', -1)
+            key = (name, url, line)
+            agg[key] = agg.get(key, 0) + hits
+        items = [{
+            'function': name,
+            'url': (url.split('/')[-1] if url else '(native)'),
+            'line': (line + 1) if line >= 0 else 0,
+            'selfPercent': round(h * 100.0 / total, 1),
+            'selfMs': h,
+        } for (name, url, line), h in agg.items()]
+        items.sort(key=lambda x: x['selfMs'], reverse=True)
+        return items[:top_n]
 
     def collectScreenshot(self):
         """截当前屏(不 reload,快且稳),返回 jpeg base64。
@@ -195,6 +328,7 @@ class H5PerformanceMonitor(object):
                 resp = p.get('response', {})
                 reqs[rid]['status'] = resp.get('status', 0)
                 reqs[rid]['type'] = p.get('type', reqs[rid]['type'])
+                reqs[rid]['timing'] = resp.get('timing') or {}  # 阶段耗时(DNS/连接/TLS/TTFB)
             elif m == 'Network.loadingFinished' and rid in reqs:
                 reqs[rid]['end'] = p.get('timestamp', reqs[rid]['end'])
                 reqs[rid]['size'] = int(p.get('encodedDataLength', 0) or 0)
@@ -205,12 +339,24 @@ class H5PerformanceMonitor(object):
         if t0 is None:
             t0 = 0
         for r in reqs.values():
-            start_ms = round((r['start'] - t0) * 1000, 1)
+            # start 用绝对单调时间(ms),跨窗口可比较,便于实时模式累积排序;渲染时按最小值归一
+            start_ms = round(r['start'] * 1000, 1)
             dur_ms = round((r['end'] - r['start']) * 1000, 1)
+            # 阶段耗时(DNS/连接/TLS/TTFB/下载),来自 ResourceTiming(偏移量,-1=不适用)
+            tm = r.get('timing') or {}
+
+            def _ph(a, b):
+                sa, sb = tm.get(a, -1), tm.get(b, -1)
+                return round(sb - sa, 1) if (sa is not None and sb is not None and sa >= 0 and sb >= sa) else 0
+            rhe = tm.get('receiveHeadersEnd', -1)
+            download = round(max(0, dur_ms - rhe), 1) if (rhe is not None and rhe >= 0) else 0
             out.append({
                 'url': r['url'][:160], 'type': r['type'], 'status': r['status'],
                 'start': max(0, start_ms), 'duration': max(0, dur_ms),
                 'size': round(r['size'] / 1024, 2), 'failed': r['failed'],
+                'dns': _ph('dnsStart', 'dnsEnd'), 'connect': _ph('connectStart', 'connectEnd'),
+                'tls': _ph('sslStart', 'sslEnd'), 'ttfb': _ph('sendEnd', 'receiveHeadersEnd'),
+                'download': download,
             })
         out.sort(key=lambda x: x['start'])
         return out
@@ -253,7 +399,8 @@ class H5PerformanceMonitor(object):
     def _log_load(self, data):
         t = self._now()
         for name, key in [('h5_ttfb', 'ttfb'), ('h5_fp', 'fp'), ('h5_fcp', 'fcp'),
-                          ('h5_lcp', 'lcp'), ('h5_dcl', 'dcl'), ('h5_load', 'load')]:
+                          ('h5_lcp', 'lcp'), ('h5_dcl', 'dcl'), ('h5_load', 'load'),
+                          ('h5_tbt', 'tbt'), ('h5_tti', 'tti')]:
             f.add_log(os.path.join(f.report_dir, f'{name}.log'), t, data.get(key, 0))
 
     def _log_runtime(self, data):
@@ -262,3 +409,17 @@ class H5PerformanceMonitor(object):
         f.add_log(os.path.join(f.report_dir, 'h5_heap.log'), t, data.get('heap', 0))
         f.add_log(os.path.join(f.report_dir, 'h5_nodes.log'), t, data.get('nodes', 0))
         f.add_log(os.path.join(f.report_dir, 'h5_longtask.log'), t, data.get('longtask', 0))
+        f.add_log(os.path.join(f.report_dir, 'h5_listeners.log'), t, data.get('listeners', 0))
+        f.add_log(os.path.join(f.report_dir, 'h5_layout.log'), t, data.get('layoutCount', 0))
+        f.add_log(os.path.join(f.report_dir, 'h5_recalc.log'), t, data.get('recalcCount', 0))
+        f.add_log(os.path.join(f.report_dir, 'h5_inp.log'), t, data.get('inp', 0))
+        f.add_log(os.path.join(f.report_dir, 'h5_documents.log'), t, data.get('documents', 0))
+        f.add_log(os.path.join(f.report_dir, 'h5_frames.log'), t, data.get('frames', 0))
+        # 持续刷新最近长任务明细到 json,供报告页归因表(item5);非时序,故单独存
+        try:
+            lt = data.get('lt') or []
+            if lt:
+                with open(os.path.join(f.report_dir, 'h5_longtasks.json'), 'w', encoding='utf-8') as fp_:
+                    json.dump({'lt': lt}, fp_)
+        except Exception:
+            pass

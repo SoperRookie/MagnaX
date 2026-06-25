@@ -26,9 +26,12 @@
 {% block page_body %}
 <div class="container-xl">
 
-  <div class="card mb-3"><div class="card-body">
-    <div><strong>{% if lan == 'cn' %}页面{% else %}URL{% endif %}:</strong> <span style="word-break:break-all;">{{ h5_data.app }}</span></div>
-    <div><strong>{% if lan == 'cn' %}设备{% else %}Device{% endif %}:</strong> {{ h5_data.devices }} &nbsp;&nbsp; <strong>{% if lan == 'cn' %}时间{% else %}Time{% endif %}:</strong> {{ h5_data.ctime }}</div>
+  <div class="card mb-3"><div class="card-body d-flex justify-content-between align-items-start">
+    <div>
+      <div><strong>{% if lan == 'cn' %}页面{% else %}URL{% endif %}:</strong> <span style="word-break:break-all;">{{ h5_data.app }}</span></div>
+      <div><strong>{% if lan == 'cn' %}设备{% else %}Device{% endif %}:</strong> {{ h5_data.devices }} &nbsp;&nbsp; <strong>{% if lan == 'cn' %}时间{% else %}Time{% endif %}:</strong> {{ h5_data.ctime }}</div>
+    </div>
+    <button id="btn-export" class="btn btn-outline-primary flex-shrink-0 ms-2" onclick="exportHtml()">{% if lan == 'cn' %}导出 HTML{% else %}Export HTML{% endif %}</button>
   </div></div>
 
   <!-- 加载成绩单 -->
@@ -41,6 +44,8 @@
       <div class="col h5-stat"><div class="v">{{ h5_data.load.ttfb }}</div><div class="l">TTFB (ms)</div></div>
       <div class="col h5-stat"><div class="v">{{ h5_data.load.dcl }}</div><div class="l">DCL (ms)</div></div>
       <div class="col h5-stat"><div class="v">{{ h5_data.load.load }}</div><div class="l">Load (ms)</div></div>
+      <div class="col h5-stat"><div class="v">{{ h5_data.load.tbt }}</div><div class="l">TBT (ms)</div></div>
+      <div class="col h5-stat"><div class="v">{{ h5_data.load.tti }}</div><div class="l">{% if lan == 'cn' %}TTI近似(ms){% else %}TTI~{% endif %}</div></div>
     </div>
   </div>
 
@@ -51,6 +56,22 @@
     <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-heap" class="h5-chart"></div></div></div></div>
     <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-nodes" class="h5-chart"></div></div></div></div>
     <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-longtask" class="h5-chart"></div></div></div></div>
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-layout" class="h5-chart"></div></div></div></div>
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-listeners" class="h5-chart"></div></div></div></div>
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-inp" class="h5-chart"></div></div></div></div>
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-docframes" class="h5-chart"></div></div></div></div>
+  </div>
+
+  <!-- 长任务归因表(无数据时隐藏) -->
+  <div id="lt-section" style="display:none;">
+    <div class="card mb-3"><div class="card-header"><h3 class="card-title">{% if lan == 'cn' %}最近长任务 (归因){% else %}Recent Long Tasks{% endif %}</h3></div>
+      <div class="card-body table-responsive">
+        <table class="table table-sm table-vcenter">
+          <thead><tr><th>#</th><th>{% if lan == 'cn' %}时长 (ms){% else %}Duration{% endif %}</th><th>{% if lan == 'cn' %}来源{% else %}Attribution{% endif %}</th></tr></thead>
+          <tbody id="lt-body"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <!-- 运行时曲线: 宿主进程(原生,发热归因);无数据时整段隐藏 -->
@@ -61,6 +82,31 @@
       <div class="col-md-4 mb-3"><div class="card"><div class="card-body"><div id="chart-hgpu" class="h5-chart"></div></div></div></div>
       <div class="col-md-4 mb-3"><div class="card"><div class="card-body"><div id="chart-htemp" class="h5-chart"></div></div></div></div>
     </div>
+  </div>
+
+  <!-- JS 热点剖析(若该会话开了实时剖析);无数据时整段隐藏 -->
+  <div id="prof-section" style="display:none;">
+    <h3 class="mb-2">{% if lan == 'cn' %}JS 热点剖析 (哪段代码烧 CPU){% else %}JS CPU Profile{% endif %}</h3>
+    <div class="card mb-3"><div class="card-body table-responsive">
+      <table class="table table-sm table-vcenter">
+        <thead><tr>
+          <th>#</th><th>{% if lan == 'cn' %}函数{% else %}Function{% endif %}</th>
+          <th>Self %</th><th>Self ms</th><th>{% if lan == 'cn' %}文件:行{% else %}File:Line{% endif %}</th>
+        </tr></thead>
+        <tbody id="prof-body"></tbody>
+      </table>
+    </div></div>
+  </div>
+
+  <!-- 资源瀑布流(无数据时隐藏) -->
+  <div id="wf-section" style="display:none;">
+    <h3 class="mb-2">{% if lan == 'cn' %}资源瀑布流{% else %}Resource Waterfall{% endif %}</h3>
+    <div class="card mb-3"><div class="card-body table-responsive">
+      <table class="table table-sm table-vcenter">
+        <thead><tr><th>#</th><th>{% if lan == 'cn' %}资源{% else %}Resource{% endif %}</th><th>{% if lan == 'cn' %}类型{% else %}Type{% endif %}</th><th>{% if lan == 'cn' %}状态{% else %}Status{% endif %}</th><th>{% if lan == 'cn' %}大小{% else %}Size{% endif %}</th><th style="width:38%">{% if lan == 'cn' %}瀑布{% else %}Waterfall{% endif %}</th><th>{% if lan == 'cn' %}总(ms){% else %}Total{% endif %}</th></tr></thead>
+        <tbody id="wf-body"></tbody>
+      </table>
+    </div></div>
   </div>
 
 </div>
@@ -98,11 +144,51 @@
     });
   }
 
+  // 导出自包含 HTML:克隆已渲染页面(图表已是SVG) + 内联样式 + 去脚本,可离线打开/分享
+  function exportHtml(){
+    var btn = document.getElementById('btn-export');
+    btn.disabled = true; btn.textContent = (lan=='cn'?'导出中...':'Exporting...');
+    var links = Array.prototype.slice.call(document.querySelectorAll('link[rel="stylesheet"]'));
+    Promise.all(links.map(function(l){
+      return fetch(l.href).then(function(r){return r.text();})
+        .then(function(css){ return {href:l.getAttribute('href'), css:css}; }).catch(function(){ return null; });
+    })).then(function(results){
+      var clone = document.documentElement.cloneNode(true);
+      clone.querySelectorAll('script').forEach(function(s){ s.remove(); });
+      var eb = clone.querySelector('#btn-export'); if(eb) eb.remove();
+      var cssMap = {}; results.forEach(function(x){ if(x) cssMap[x.href]=x.css; });
+      clone.querySelectorAll('link[rel="stylesheet"]').forEach(function(l){
+        var css = cssMap[l.getAttribute('href')];
+        if(css!=null){ var st=document.createElement('style'); st.textContent=css; l.replaceWith(st); }
+        else { l.remove(); }
+      });
+      var blob = new Blob(['<!DOCTYPE html>\n'+clone.outerHTML], {type:'text/html;charset=utf-8'});
+      var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = 'H5report_' + ((h5.ctime)||'report') + '.html';
+      document.body.appendChild(a); a.click(); a.remove();
+      btn.disabled = false; btn.textContent = (lan=='cn'?'导出 HTML':'Export HTML');
+    });
+  }
+
   $(document).ready(function(){
     mkChart('chart-fps', lan=='cn'?'页面 FPS':'Page FPS', '#2fb344', h5.fps||[], '');
     mkChart('chart-heap', lan=='cn'?'JS堆内存 (MB)':'JS Heap (MB)', '#206bc4', h5.heap||[], ' MB');
     mkChart('chart-nodes', lan=='cn'?'DOM 节点数':'DOM Nodes', '#f59f00', h5.nodes||[], '');
     mkChart('chart-longtask', lan=='cn'?'长任务 (每次新增)':'Long Tasks (new)', '#d63939', h5.longtask||[], '');
+    mkChart2('chart-layout', lan=='cn'?'布局 / 样式重算 (每次新增)':'Layout / Recalc (new)',
+      [lan=='cn'?'布局':'layout', lan=='cn'?'样式重算':'recalc'], ['#d6336c','#7048e8'], h5.layout||[], h5.recalc||[], '');
+    mkChart('chart-listeners', lan=='cn'?'JS 事件监听器数':'JS Listeners', '#0ca678', h5.listeners||[], '');
+    mkChart('chart-inp', lan=='cn'?'INP 交互延迟 (ms)':'INP (ms)', '#e8590c', h5.inp||[], ' ms');
+    mkChart2('chart-docframes', 'Documents / Frames', ['Documents','Frames'], ['#1098ad','#f76707'], h5.documents||[], h5.frames||[], '');
+    // 长任务归因表
+    if((h5.longtasks||[]).length){
+      $('#lt-section').show();
+      var ltrows = '';
+      h5.longtasks.slice().reverse().forEach(function(x, i){
+        ltrows += '<tr><td>'+(i+1)+'</td><td>'+x.dur+'</td><td class="text-muted">'+x.at+'</td></tr>';
+      });
+      $('#lt-body').html(ltrows);
+    }
     // 宿主原生:有数据才显示
     if((h5.hostTemp||[]).length || (h5.hostCpuApp||[]).length){
       $('#host-section').show();
@@ -111,6 +197,31 @@
         h5.hostCpuApp||[], h5.hostCpuSys||[], ' %');
       mkChart('chart-hgpu', lan=='cn'?'宿主 GPU %':'Host GPU %', '#ae3ec9', h5.hostGpu||[], ' %');
       mkChart('chart-htemp', lan=='cn'?'表层温度 ℃ (手感)':'Surface Temp ℃', '#e8590c', h5.hostTemp||[], ' ℃');
+    }
+    // 热点剖析表(有数据才显示)
+    if((h5.profile||[]).length){
+      $('#prof-section').show();
+      var rows = '';
+      h5.profile.forEach(function(t, i){
+        rows += '<tr><td>'+(i+1)+'</td><td><code>'+t['function']+'</code></td><td>'+t.selfPercent+'%</td><td>'+t.selfMs+'</td><td class="text-muted">'+t.url+':'+t.line+'</td></tr>';
+      });
+      $('#prof-body').html(rows);
+    }
+    // 资源瀑布流(有数据才显示)
+    if((h5.waterfall||[]).length){
+      $('#wf-section').show();
+      var minStart = Infinity, maxEnd = 0;
+      h5.waterfall.forEach(function(r){ if(r.start<minStart) minStart=r.start; var e=r.start+r.duration; if(e>maxEnd) maxEnd=e; });
+      var span = (maxEnd - minStart) || 1;
+      var wrows = '';
+      h5.waterfall.forEach(function(r, i){
+        var leftPct=((r.start-minStart)/span*100).toFixed(1), widPct=Math.max(0.5, r.duration/span*100).toFixed(1);
+        var tip='DNS '+r.dns+' | 连接 '+r.connect+' | TLS '+r.tls+' | TTFB '+r.ttfb+' | 下载 '+r.download+' ms';
+        var bar='<div style="position:relative;height:14px;background:#f1f3f5;border-radius:2px;"><div title="'+tip+'" style="position:absolute;left:'+leftPct+'%;width:'+widPct+'%;height:14px;background:#4dabf7;border-radius:2px;"></div></div>';
+        var name=(r.url.split('?')[0].split('/').pop()||r.url).slice(0,40);
+        wrows+='<tr><td>'+(i+1)+'</td><td title="'+r.url+'">'+name+'</td><td>'+r.type+'</td><td>'+r.status+'</td><td>'+r.size+'KB</td><td>'+bar+'</td><td>'+r.duration+'</td></tr>';
+      });
+      $('#wf-body').html(wrows);
     }
   });
 </script>
