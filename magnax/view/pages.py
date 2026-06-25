@@ -35,6 +35,24 @@ def h5():
     settings = m._settings(request)
     return render_template('h5.html', **locals())
 
+def _list_h5_scenes(exclude=None):
+    """列出所有 H5 报告场景(用于对比下拉),按时间倒序"""
+    scenes = []
+    report_dir = os.path.join(os.getcwd(), 'report')
+    if os.path.isdir(report_dir):
+        for dirn in sorted(os.listdir(report_dir), reverse=True):
+            rj = os.path.join(report_dir, dirn, 'result.json')
+            if dirn == exclude or not os.path.isfile(rj):
+                continue
+            try:
+                rd = json.loads(open(rj, encoding='utf-8').read())
+                if rd.get('platform') == 'H5':
+                    scenes.append({'scene': dirn, 'app': rd.get('app', ''), 'ctime': rd.get('ctime', '')})
+            except Exception:
+                pass
+    return scenes
+
+
 @page.route('/h5_analysis', methods=['post', 'get'])
 def h5_analysis():
     lan = request.args.get('lan')
@@ -46,7 +64,22 @@ def h5_analysis():
         h5_data = f._setH5Perfs(scene)
     except Exception as e:
         logger.exception(e)
+    h5_scenes = _list_h5_scenes(exclude=scene)  # 其他 H5 报告,供对比下拉
     return render_template('h5_analysis.html', **locals())
+
+@page.route('/h5_compare', methods=['post', 'get'])
+def h5_compare():
+    lan = request.args.get('lan')
+    scene1 = request.args.get('scene1')
+    scene2 = request.args.get('scene2')
+    settings = m._settings(request)
+    d1, d2 = {}, {}
+    try:
+        d1 = f._setH5Perfs(scene1)
+        d2 = f._setH5Perfs(scene2)
+    except Exception as e:
+        logger.exception(e)
+    return render_template('h5_compare.html', **locals())
 
 @page.route('/pk')
 def pk():
