@@ -271,6 +271,7 @@
   function saveH5Report(){
     stopMonitor();
     var url = h5PageUrls[h5Ws()] || h5Ws() || 'H5';
+    url = url.split('?')[0];  // 去掉超长查询参数(session/签名),只留 域名+路径,作报告标识
     $.ajax({
       url: Host + '/apm/h5/save', type:'GET', cache:false, timeout:30000,
       data:{ device: h5Device(), url: url },
