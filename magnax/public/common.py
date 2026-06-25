@@ -733,6 +733,15 @@ class File:
                     profile_top = json.loads(fp.read()).get('top', [])
         except Exception:
             pass
+        # 最近长任务明细(归因表),来自 h5_longtasks.json
+        longtasks = []
+        try:
+            lpath = os.path.join(self.report_dir, scene, 'h5_longtasks.json')
+            if os.path.exists(lpath):
+                with open(lpath, encoding='utf-8') as fp:
+                    longtasks = json.loads(fp.read()).get('lt', [])
+        except Exception:
+            pass
 
         return {
             'app': result_json.get('app'),
@@ -746,7 +755,11 @@ class File:
             'listeners': series('h5_listeners.log'),
             'layout': delta_series('h5_layout.log'),
             'recalc': delta_series('h5_recalc.log'),
-            'profile': profile_top,  # 热点函数表(可能为空)
+            'inp': series('h5_inp.log'),
+            'documents': series('h5_documents.log'),
+            'frames': series('h5_frames.log'),
+            'profile': profile_top,    # 热点函数表(可能为空)
+            'longtasks': longtasks,    # 最近长任务归因(可能为空)
             # 宿主进程原生指标(发热归因);H5-only 会话无这些日志时返回空列表
             'hostCpuApp': series('h5_host_cpu_app.log'),
             'hostCpuSys': series('h5_host_cpu_sys.log'),
@@ -755,6 +768,7 @@ class File:
             'load': {
                 'fp': last('h5_fp.log'), 'lcp': last('h5_lcp.log'), 'fcp': last('h5_fcp.log'),
                 'ttfb': last('h5_ttfb.log'), 'dcl': last('h5_dcl.log'), 'load': last('h5_load.log'),
+                'tbt': last('h5_tbt.log'), 'tti': last('h5_tti.log'),
             },
         }
 

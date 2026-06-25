@@ -81,6 +81,8 @@
       <div class="col h5-stat"><div class="v" id="m-dcl">-</div><div class="l">DCL (ms)</div></div>
       <div class="col h5-stat"><div class="v" id="m-load">-</div><div class="l">Load (ms)</div></div>
       <div class="col h5-stat"><div class="v" id="m-cls">-</div><div class="l">CLS</div></div>
+      <div class="col h5-stat"><div class="v" id="m-tbt">-</div><div class="l">TBT (ms)</div></div>
+      <div class="col h5-stat"><div class="v" id="m-tti">-</div><div class="l">{% if lan == 'cn' %}TTI 近似 (ms){% else %}TTI~ (ms){% endif %}</div></div>
       <div class="col h5-stat"><div class="v" id="m-heap">-</div><div class="l">{% if lan == 'cn' %}JS堆 (MB){% else %}JS Heap{% endif %}</div></div>
       <div class="col h5-stat"><div class="v" id="m-nodes">-</div><div class="l">{% if lan == 'cn' %}DOM节点{% else %}Nodes{% endif %}</div></div>
     </div>
@@ -95,6 +97,18 @@
     <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-longtask" class="h5-chart"></div></div></div></div>
     <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-layout" class="h5-chart"></div></div></div></div>
     <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-listeners" class="h5-chart"></div></div></div></div>
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-inp" class="h5-chart"></div></div></div></div>
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-docframes" class="h5-chart"></div></div></div></div>
+  </div>
+
+  <!-- 长任务归因表(最近长任务: 时长 + 来源) -->
+  <div class="card mb-3"><div class="card-header"><h3 class="card-title">{% if lan == 'cn' %}最近长任务 (归因){% else %}Recent Long Tasks{% endif %}</h3></div>
+    <div class="card-body table-responsive">
+      <table class="table table-sm table-vcenter">
+        <thead><tr><th>#</th><th>{% if lan == 'cn' %}时长 (ms){% else %}Duration{% endif %}</th><th>{% if lan == 'cn' %}来源 (脚本/容器){% else %}Attribution{% endif %}</th></tr></thead>
+        <tbody id="lt-body"><tr><td colspan="3" class="text-muted">{% if lan == 'cn' %}监控中实时更新{% else %}updates while monitoring{% endif %}</td></tr></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- 运行时曲线: 宿主进程(原生),用于发热归因 -->
@@ -226,7 +240,8 @@
         if(d['status'] != 1){ SwalFire('error', lan=='cn'?'采集失败':'Failed', d['msg']||'', 5000); return; }
         $('#m-fp').text(d.fp); $('#m-lcp').text(d.lcp); $('#m-fcp').text(d.fcp);
         $('#m-ttfb').text(d.ttfb); $('#m-dcl').text(d.dcl); $('#m-load').text(d.load);
-        $('#m-cls').text(d.cls); $('#m-heap').text(d.heap); $('#m-nodes').text(d.nodes);
+        $('#m-cls').text(d.cls); $('#m-tbt').text(d.tbt); $('#m-tti').text(d.tti);
+        $('#m-heap').text(d.heap); $('#m-nodes').text(d.nodes);
       },
       error:function(){ swal.close(); SwalFire('error','Server Error','',4000); }
     });
@@ -265,6 +280,9 @@
     charts.layout = mkChart2('chart-layout', lan=='cn'?'布局 / 样式重算 (每次新增)':'Layout / Recalc (new)',
       [lan=='cn'?'布局':'layout', lan=='cn'?'样式重算':'recalc'], ['#d6336c', '#7048e8'], '');
     charts.listeners = mkChart('chart-listeners', lan=='cn'?'JS 事件监听器数':'JS Listeners', '#0ca678', '');
+    charts.inp = mkChart('chart-inp', lan=='cn'?'INP 交互延迟 (ms,越低越好)':'INP (ms)', '#e8590c', ' ms');
+    charts.docframes = mkChart2('chart-docframes', 'Documents / Frames',
+      ['Documents', 'Frames'], ['#1098ad', '#f76707'], '');
     // 宿主进程(原生)
     charts.hcpu = mkChart2('chart-hcpu', lan=='cn'?'宿主 CPU %':'Host CPU %',
       [lan=='cn'?'应用':'app', lan=='cn'?'系统':'sys'], ['#d63939', '#f59f00'], ' %');
@@ -317,6 +335,15 @@
         pushPoint(charts.layout, (lastRecalc === null || cr < lastRecalc) ? 0 : (cr - lastRecalc), 1);
         lastRecalc = cr;
         pushPoint(charts.listeners, d.listeners);
+        pushPoint(charts.inp, d.inp);
+        pushPoint(charts.docframes, d.documents, 0);
+        pushPoint(charts.docframes, d.frames, 1);
+        // 长任务归因表(最近)
+        var lt = d.lt || [], rows = '';
+        lt.slice().reverse().forEach(function(x, i){
+          rows += '<tr><td>'+(i+1)+'</td><td>'+x.dur+'</td><td class="text-muted">'+x.at+'</td></tr>';
+        });
+        if(rows){ $('#lt-body').html(rows); }
       },
       complete:function(){
         // 自配速:本次回来(成功/失败/超时)后再排下一次,避免请求堆积;单次失败也不断链

@@ -27,6 +27,7 @@ INJECT_JS = r'''(function(){
   if (window.__h5_inited) return;
   window.__h5_inited = true;
   window.__h5lcp = 0; window.__h5cls = 0; window.__h5longtask = 0; window.__h5fps = 0;
+  window.__h5inp = 0; window.__h5tbt = 0; window.__h5lt = []; window.__h5ltspans = [];
   try {
     new PerformanceObserver(function(l){
       var es = l.getEntries(); var e = es[es.length-1];
@@ -36,8 +37,22 @@ INJECT_JS = r'''(function(){
       for (var e of l.getEntries()) { if (!e.hadRecentInput) window.__h5cls += e.value; }
     }).observe({type:'layout-shift', buffered:true});
     new PerformanceObserver(function(l){
-      window.__h5longtask += l.getEntries().length;
+      for (var e of l.getEntries()){
+        window.__h5longtask += 1;
+        window.__h5tbt += Math.max(0, e.duration - 50);  // TBT:超过50ms的阻塞部分累加
+        var a = (e.attribution && e.attribution[0]) || {};
+        window.__h5lt.push({dur: Math.round(e.duration), at: (a.name || a.containerName || a.containerType || 'self')});
+        if (window.__h5lt.length > 30) window.__h5lt.shift();
+        window.__h5ltspans.push([Math.round(e.startTime), Math.round(e.startTime + e.duration)]);  // 供TTI计算
+      }
     }).observe({type:'longtask', buffered:true});
+    // INP/FID:交互响应延迟,取最大(近似 INP)
+    new PerformanceObserver(function(l){
+      for (var e of l.getEntries()){ var d = Math.round(e.duration); if (d > window.__h5inp) window.__h5inp = d; }
+    }).observe({type:'event', durationThreshold:16, buffered:true});
+    new PerformanceObserver(function(l){
+      for (var e of l.getEntries()){ var d = Math.round(e.processingStart - e.startTime); if (d > window.__h5inp) window.__h5inp = d; }
+    }).observe({type:'first-input', buffered:true});
   } catch (e) {}
   var frames = 0, last = performance.now();
   function loop(now){
@@ -52,14 +67,25 @@ INJECT_JS = r'''(function(){
 LOAD_JS = r'''(function(){
   var nav = performance.getEntriesByType('navigation')[0] || {};
   var paint = {}; performance.getEntriesByType('paint').forEach(function(p){paint[p.name]=p.startTime;});
+  var fcp = paint['first-contentful-paint'] || 0;
+  // TTI 近似:FCP 之后,找第一个 5s 内无长任务的安静窗口,TTI=该窗口前最后一个长任务结束(无则 FCP)
+  var spans = (window.__h5ltspans || []).filter(function(s){ return s[1] > fcp; }).sort(function(a,b){return a[0]-b[0];});
+  var tti = fcp;
+  for (var i=0;i<spans.length;i++){
+    tti = spans[i][1];
+    var nextStart = (i+1<spans.length) ? spans[i+1][0] : Infinity;
+    if (nextStart - spans[i][1] >= 5000) break;
+  }
   return JSON.stringify({
     ttfb: Math.max(0, Math.round((nav.responseStart||0) - (nav.requestStart||0))),
     dcl:  Math.max(0, Math.round((nav.domContentLoadedEventEnd||0) - (nav.startTime||0))),
     load: Math.max(0, Math.round((nav.loadEventEnd||0) - (nav.startTime||0))),
     fp:   paint['first-paint'] ? Math.round(paint['first-paint']) : 0,
-    fcp:  paint['first-contentful-paint'] ? Math.round(paint['first-contentful-paint']) : 0,
+    fcp:  Math.round(fcp),
     lcp:  Math.round(window.__h5lcp || 0),
-    cls:  Number((window.__h5cls || 0).toFixed(4))
+    cls:  Number((window.__h5cls || 0).toFixed(4)),
+    tbt:  Math.round(window.__h5tbt || 0),
+    tti:  Math.round(tti)
   });
 })()'''
 
@@ -68,7 +94,9 @@ RUNTIME_JS = r'''(function(){
   return JSON.stringify({
     fps: Math.round(window.__h5fps || 0),
     cls: Number((window.__h5cls || 0).toFixed(4)),
-    longtask: window.__h5longtask || 0
+    longtask: window.__h5longtask || 0,
+    inp: Math.round(window.__h5inp || 0),
+    lt: (window.__h5lt || []).slice(-10)
   });
 })()'''
 
@@ -115,6 +143,8 @@ class H5PerformanceMonitor(object):
             'listeners': int(ms.get('JSEventListeners', 0)),
             'layoutCount': int(ms.get('LayoutCount', 0)),
             'recalcCount': int(ms.get('RecalcStyleCount', 0)),
+            'documents': int(ms.get('Documents', 0)),
+            'frames': int(ms.get('Frames', 0)),
         }
 
     def collectLoad(self, do_reload=True):
@@ -315,7 +345,8 @@ class H5PerformanceMonitor(object):
     def _log_load(self, data):
         t = self._now()
         for name, key in [('h5_ttfb', 'ttfb'), ('h5_fp', 'fp'), ('h5_fcp', 'fcp'),
-                          ('h5_lcp', 'lcp'), ('h5_dcl', 'dcl'), ('h5_load', 'load')]:
+                          ('h5_lcp', 'lcp'), ('h5_dcl', 'dcl'), ('h5_load', 'load'),
+                          ('h5_tbt', 'tbt'), ('h5_tti', 'tti')]:
             f.add_log(os.path.join(f.report_dir, f'{name}.log'), t, data.get(key, 0))
 
     def _log_runtime(self, data):
@@ -327,3 +358,14 @@ class H5PerformanceMonitor(object):
         f.add_log(os.path.join(f.report_dir, 'h5_listeners.log'), t, data.get('listeners', 0))
         f.add_log(os.path.join(f.report_dir, 'h5_layout.log'), t, data.get('layoutCount', 0))
         f.add_log(os.path.join(f.report_dir, 'h5_recalc.log'), t, data.get('recalcCount', 0))
+        f.add_log(os.path.join(f.report_dir, 'h5_inp.log'), t, data.get('inp', 0))
+        f.add_log(os.path.join(f.report_dir, 'h5_documents.log'), t, data.get('documents', 0))
+        f.add_log(os.path.join(f.report_dir, 'h5_frames.log'), t, data.get('frames', 0))
+        # 持续刷新最近长任务明细到 json,供报告页归因表(item5);非时序,故单独存
+        try:
+            lt = data.get('lt') or []
+            if lt:
+                with open(os.path.join(f.report_dir, 'h5_longtasks.json'), 'w', encoding='utf-8') as fp_:
+                    json.dump({'lt': lt}, fp_)
+        except Exception:
+            pass

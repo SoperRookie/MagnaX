@@ -41,6 +41,8 @@
       <div class="col h5-stat"><div class="v">{{ h5_data.load.ttfb }}</div><div class="l">TTFB (ms)</div></div>
       <div class="col h5-stat"><div class="v">{{ h5_data.load.dcl }}</div><div class="l">DCL (ms)</div></div>
       <div class="col h5-stat"><div class="v">{{ h5_data.load.load }}</div><div class="l">Load (ms)</div></div>
+      <div class="col h5-stat"><div class="v">{{ h5_data.load.tbt }}</div><div class="l">TBT (ms)</div></div>
+      <div class="col h5-stat"><div class="v">{{ h5_data.load.tti }}</div><div class="l">{% if lan == 'cn' %}TTI近似(ms){% else %}TTI~{% endif %}</div></div>
     </div>
   </div>
 
@@ -53,6 +55,20 @@
     <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-longtask" class="h5-chart"></div></div></div></div>
     <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-layout" class="h5-chart"></div></div></div></div>
     <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-listeners" class="h5-chart"></div></div></div></div>
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-inp" class="h5-chart"></div></div></div></div>
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="chart-docframes" class="h5-chart"></div></div></div></div>
+  </div>
+
+  <!-- 长任务归因表(无数据时隐藏) -->
+  <div id="lt-section" style="display:none;">
+    <div class="card mb-3"><div class="card-header"><h3 class="card-title">{% if lan == 'cn' %}最近长任务 (归因){% else %}Recent Long Tasks{% endif %}</h3></div>
+      <div class="card-body table-responsive">
+        <table class="table table-sm table-vcenter">
+          <thead><tr><th>#</th><th>{% if lan == 'cn' %}时长 (ms){% else %}Duration{% endif %}</th><th>{% if lan == 'cn' %}来源{% else %}Attribution{% endif %}</th></tr></thead>
+          <tbody id="lt-body"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <!-- 运行时曲线: 宿主进程(原生,发热归因);无数据时整段隐藏 -->
@@ -122,6 +138,17 @@
     mkChart2('chart-layout', lan=='cn'?'布局 / 样式重算 (每次新增)':'Layout / Recalc (new)',
       [lan=='cn'?'布局':'layout', lan=='cn'?'样式重算':'recalc'], ['#d6336c','#7048e8'], h5.layout||[], h5.recalc||[], '');
     mkChart('chart-listeners', lan=='cn'?'JS 事件监听器数':'JS Listeners', '#0ca678', h5.listeners||[], '');
+    mkChart('chart-inp', lan=='cn'?'INP 交互延迟 (ms)':'INP (ms)', '#e8590c', h5.inp||[], ' ms');
+    mkChart2('chart-docframes', 'Documents / Frames', ['Documents','Frames'], ['#1098ad','#f76707'], h5.documents||[], h5.frames||[], '');
+    // 长任务归因表
+    if((h5.longtasks||[]).length){
+      $('#lt-section').show();
+      var ltrows = '';
+      h5.longtasks.slice().reverse().forEach(function(x, i){
+        ltrows += '<tr><td>'+(i+1)+'</td><td>'+x.dur+'</td><td class="text-muted">'+x.at+'</td></tr>';
+      });
+      $('#lt-body').html(ltrows);
+    }
     // 宿主原生:有数据才显示
     if((h5.hostTemp||[]).length || (h5.hostCpuApp||[]).length){
       $('#host-section').show();
