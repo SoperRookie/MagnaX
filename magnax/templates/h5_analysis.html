@@ -110,7 +110,7 @@
         [lan=='cn'?'应用':'app', lan=='cn'?'系统':'sys'], ['#d63939','#f59f00'],
         h5.hostCpuApp||[], h5.hostCpuSys||[], ' %');
       mkChart('chart-hgpu', lan=='cn'?'宿主 GPU %':'Host GPU %', '#ae3ec9', h5.hostGpu||[], ' %');
-      mkChart('chart-htemp', lan=='cn'?'设备温度 ℃':'Temp ℃', '#e8590c', h5.hostTemp||[], ' ℃');
+      mkChart('chart-htemp', lan=='cn'?'表层温度 ℃ (手感)':'Surface Temp ℃', '#e8590c', h5.hostTemp||[], ' ℃');
     }
   });
 </script>

@@ -104,6 +104,7 @@
 {% block js %}
 <script>
   var h5Timer = null;
+  var h5Running = false;   // 监控运行标志(自配速递归轮询用)
   var charts = {};
   var lastLongtask = null;  // 上次的长任务累计值,用于算每次采样的新增量
   var h5PageUrls = {};      // ws -> 页面url,保存报告时用作页面标识
@@ -202,7 +203,7 @@
     charts.hcpu = mkChart2('chart-hcpu', lan=='cn'?'宿主 CPU %':'Host CPU %',
       [lan=='cn'?'应用':'app', lan=='cn'?'系统':'sys'], ['#d63939', '#f59f00'], ' %');
     charts.hgpu = mkChart('chart-hgpu', lan=='cn'?'宿主 GPU %':'Host GPU %', '#ae3ec9', ' %');
-    charts.htemp = mkChart('chart-htemp', lan=='cn'?'设备温度 ℃':'Temp ℃', '#e8590c', ' ℃');
+    charts.htemp = mkChart('chart-htemp', lan=='cn'?'表层温度 ℃ (手感)':'Surface Temp ℃', '#e8590c', ' ℃');
   }
 
   function pushPoint(chart, val, idx){
@@ -242,22 +243,27 @@
         var delta = (lastLongtask === null || cur < lastLongtask) ? 0 : (cur - lastLongtask);
         lastLongtask = cur;
         pushPoint(charts.longtask, delta);
+      },
+      complete:function(){
+        // 自配速:本次回来(成功/失败/超时)后再排下一次,避免请求堆积;单次失败也不断链
+        if(h5Running){ h5Timer = setTimeout(pollRuntime, 2000); }
       }
     });
   }
 
   function startMonitor(){
     if(!h5Ws()){ SwalFire('warning', lan=='cn'?'请选择页面':'Select a page', '', 3000); return; }
-    if(h5Timer) return;
+    if(h5Running) return;
     lastLongtask = null;  // 每次开始监控重置长任务基准
     if(!charts.fps) initCharts();
     $('#btn-start').prop('disabled', true); $('#btn-stop').prop('disabled', false);
-    pollRuntime();
-    h5Timer = setInterval(pollRuntime, 2000);
+    h5Running = true;
+    pollRuntime();  // 自配速:每次轮询在 complete 里排下一次,不会堆积
   }
 
   function stopMonitor(){
-    if(h5Timer){ clearInterval(h5Timer); h5Timer = null; }
+    h5Running = false;
+    if(h5Timer){ clearTimeout(h5Timer); h5Timer = null; }
     $('#btn-start').prop('disabled', false); $('#btn-stop').prop('disabled', true);
   }
 

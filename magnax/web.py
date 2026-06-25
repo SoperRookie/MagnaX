@@ -110,7 +110,9 @@ def open_url(host: str, port: int):
 
 
 def start(host: str, port: int):
-    app.run(host=host, port=port, debug=False)
+    # threaded=True:多线程处理请求,避免某次 adb 采集变慢/卡住时单线程把整个服务堵死、
+    # 前端所有监控曲线一起卡死(长时间监控高负载下尤其明显)
+    app.run(host=host, port=port, debug=False, threaded=True)
 
 
 def check_ios17_device():
