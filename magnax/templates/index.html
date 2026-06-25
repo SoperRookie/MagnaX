@@ -54,6 +54,16 @@ MagnaX - Application Performance Monitoring
             </span>
         </a>
     </li>
+    <li class="nav-item" id="h5_tab" style="margin-left: 20px;font-weight: bolder;">
+        <a class="nav-link" href="/h5?lan={{ lan }}">
+            <span class="nav-link-icon d-md-none d-lg-inline-block">
+                <svg class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" width="200" height="200"><path d="M192 128h640a64 64 0 0 1 64 64v512a64 64 0 0 1-64 64H192a64 64 0 0 1-64-64V192a64 64 0 0 1 64-64z" fill="#50BCFF"></path><path d="M832 736H192a96 96 0 0 1-96-96V192a96 96 0 0 1 96-96h640a96 96 0 0 1 96 96v448a96 96 0 0 1-96 96zM192 160a32 32 0 0 0-32 32v448a32 32 0 0 0 32 32h640a32 32 0 0 0 32-32V192a32 32 0 0 0-32-32H192z" fill="#282828"></path><path d="M640 896H384a32 32 0 0 1 0-64h256a32 32 0 0 1 0 64z" fill="#282828"></path><path d="M320 320v192M320 416h128M448 320v192M544 512V320l128 192V320M768 320v192h-96" stroke="#FFFFFF" stroke-width="40" fill="none" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            </span>
+            <span class="nav-link-title strong-text">
+                {% if lan == 'cn' %} H5性能 {% else %} H5 {% endif %}
+            </span>
+        </a>
+    </li>
 </ul>
 {% endblock %}
 
