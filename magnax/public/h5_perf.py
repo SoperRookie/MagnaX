@@ -184,7 +184,14 @@ class H5PerformanceMonitor(object):
             import time as _t
             _t.sleep(max(1, min(int(seconds), 30)))
             r = self.client.call('Profiler.stop', timeout=40)
-            return {'top': self._top_functions(r.get('profile', {}))}
+            top = self._top_functions(r.get('profile', {}))
+            # 落盘最近一次剖析结果,保存报告时归档(make_report 会搬 .json),供报告页展示热点表
+            try:
+                with open(os.path.join(f.report_dir, 'h5_profile.json'), 'w', encoding='utf-8') as fp:
+                    json.dump({'top': top}, fp)
+            except Exception as e:
+                logger.warning(f'[H5] 剖析结果落盘失败: {e}')
+            return {'top': top}
         finally:
             self.client.close()
 

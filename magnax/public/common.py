@@ -724,6 +724,16 @@ class File:
                 prev = cur
             return out
 
+        # 热点剖析结果(若该会话开了实时剖析则有 h5_profile.json)
+        profile_top = []
+        try:
+            ppath = os.path.join(self.report_dir, scene, 'h5_profile.json')
+            if os.path.exists(ppath):
+                with open(ppath, encoding='utf-8') as fp:
+                    profile_top = json.loads(fp.read()).get('top', [])
+        except Exception:
+            pass
+
         return {
             'app': result_json.get('app'),
             'devices': result_json.get('devices'),
@@ -736,6 +746,7 @@ class File:
             'listeners': series('h5_listeners.log'),
             'layout': delta_series('h5_layout.log'),
             'recalc': delta_series('h5_recalc.log'),
+            'profile': profile_top,  # 热点函数表(可能为空)
             # 宿主进程原生指标(发热归因);H5-only 会话无这些日志时返回空列表
             'hostCpuApp': series('h5_host_cpu_app.log'),
             'hostCpuSys': series('h5_host_cpu_sys.log'),

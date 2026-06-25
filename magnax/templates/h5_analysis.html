@@ -65,6 +65,20 @@
     </div>
   </div>
 
+  <!-- JS 热点剖析(若该会话开了实时剖析);无数据时整段隐藏 -->
+  <div id="prof-section" style="display:none;">
+    <h3 class="mb-2">{% if lan == 'cn' %}JS 热点剖析 (哪段代码烧 CPU){% else %}JS CPU Profile{% endif %}</h3>
+    <div class="card mb-3"><div class="card-body table-responsive">
+      <table class="table table-sm table-vcenter">
+        <thead><tr>
+          <th>#</th><th>{% if lan == 'cn' %}函数{% else %}Function{% endif %}</th>
+          <th>Self %</th><th>Self ms</th><th>{% if lan == 'cn' %}文件:行{% else %}File:Line{% endif %}</th>
+        </tr></thead>
+        <tbody id="prof-body"></tbody>
+      </table>
+    </div></div>
+  </div>
+
 </div>
 {% endblock %}
 
@@ -116,6 +130,15 @@
         h5.hostCpuApp||[], h5.hostCpuSys||[], ' %');
       mkChart('chart-hgpu', lan=='cn'?'宿主 GPU %':'Host GPU %', '#ae3ec9', h5.hostGpu||[], ' %');
       mkChart('chart-htemp', lan=='cn'?'表层温度 ℃ (手感)':'Surface Temp ℃', '#e8590c', h5.hostTemp||[], ' ℃');
+    }
+    // 热点剖析表(有数据才显示)
+    if((h5.profile||[]).length){
+      $('#prof-section').show();
+      var rows = '';
+      h5.profile.forEach(function(t, i){
+        rows += '<tr><td>'+(i+1)+'</td><td><code>'+t['function']+'</code></td><td>'+t.selfPercent+'%</td><td>'+t.selfMs+'</td><td class="text-muted">'+t.url+':'+t.line+'</td></tr>';
+      });
+      $('#prof-body').html(rows);
     }
   });
 </script>
