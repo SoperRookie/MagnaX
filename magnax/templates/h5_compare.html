@@ -1,0 +1,111 @@
+{% extends 'base.html' %}
+
+{% block title %}MagnaX - H5 {% if lan == 'cn' %}对比{% else %}Compare{% endif %}{% endblock %}
+
+{% block css %}
+<style>
+  .h5-chart { height:280px; }
+  .cmp-tbl td, .cmp-tbl th { text-align:center; }
+  .delta-up { color:#d6336c; } .delta-down { color:#2fb344; }
+</style>
+{% endblock %}
+
+{% block navbar_nav %}
+<ul class="navbar-nav">
+  <li class="nav-item"><a class="nav-link" href="/report?lan={{ lan }}">{% if lan == 'cn' %}报告列表{% else %}Reports{% endif %}</a></li>
+</ul>
+{% endblock %}
+
+{% block page_title %}<span style="font-weight:bolder;">{% if lan == 'cn' %}H5 报告对比{% else %}H5 Compare{% endif %}</span>{% endblock %}
+
+{% block page_body %}
+<div class="container-xl">
+
+  <div class="card mb-3"><div class="card-body row">
+    <div class="col-md-6"><strong style="color:#206bc4;">{% if lan == 'cn' %}报告1{% else %}Report 1{% endif %}</strong><br>
+      <span style="word-break:break-all">{{ d1.app }}</span><br><span class="text-muted">{{ d1.ctime }} · {{ d1.devices }}</span></div>
+    <div class="col-md-6"><strong style="color:#d6336c;">{% if lan == 'cn' %}报告2{% else %}Report 2{% endif %}</strong><br>
+      <span style="word-break:break-all">{{ d2.app }}</span><br><span class="text-muted">{{ d2.ctime }} · {{ d2.devices }}</span></div>
+  </div></div>
+
+  <!-- 加载指标对比 -->
+  <div class="card mb-3"><div class="card-header"><h3 class="card-title">{% if lan == 'cn' %}加载性能对比{% else %}Load{% endif %}</h3></div>
+    <div class="card-body table-responsive"><table class="table table-sm cmp-tbl">
+      <thead><tr><th>{% if lan == 'cn' %}指标{% else %}Metric{% endif %}</th><th style="color:#206bc4">{% if lan == 'cn' %}报告1{% else %}R1{% endif %}</th><th style="color:#d6336c">{% if lan == 'cn' %}报告2{% else %}R2{% endif %}</th><th>{% if lan == 'cn' %}差值(2-1){% else %}Δ{% endif %}</th></tr></thead>
+      <tbody id="cmp-load-body"></tbody>
+    </table></div>
+  </div>
+
+  <!-- 运行时叠加(报告1 vs 报告2,按采样序号) -->
+  <h3 class="mb-2">{% if lan == 'cn' %}运行时对比 (H5 页面层){% else %}Runtime (H5){% endif %}</h3>
+  <div class="row">
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="c-fps" class="h5-chart"></div></div></div></div>
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="c-heap" class="h5-chart"></div></div></div></div>
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="c-nodes" class="h5-chart"></div></div></div></div>
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="c-longtask" class="h5-chart"></div></div></div></div>
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="c-listeners" class="h5-chart"></div></div></div></div>
+    <div class="col-md-6 mb-3"><div class="card"><div class="card-body"><div id="c-inp" class="h5-chart"></div></div></div></div>
+  </div>
+
+  <div id="c-host" style="display:none;">
+    <h3 class="mb-2">{% if lan == 'cn' %}宿主进程对比 (发热){% else %}Host (heat){% endif %}</h3>
+    <div class="row">
+      <div class="col-md-4 mb-3"><div class="card"><div class="card-body"><div id="c-hcpu" class="h5-chart"></div></div></div></div>
+      <div class="col-md-4 mb-3"><div class="card"><div class="card-body"><div id="c-hgpu" class="h5-chart"></div></div></div></div>
+      <div class="col-md-4 mb-3"><div class="card"><div class="card-body"><div id="c-htemp" class="h5-chart"></div></div></div></div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block js %}
+<script>
+  var d1 = {{ d1 | tojson }};
+  var d2 = {{ d2 | tojson }};
+  var R1 = lan=='cn'?'报告1':'R1', R2 = lan=='cn'?'报告2':'R2';
+
+  function cmpChart(id, title, suffix, a1, a2){
+    Highcharts.chart(id, {
+      chart:{ type:'line', height:280 },
+      title:{ text:title, style:{ fontSize:'14px' } },
+      credits:{ enabled:false }, legend:{ enabled:true },
+      xAxis:{ title:{ text:lan=='cn'?'采样序号':'sample' }, allowDecimals:false },
+      yAxis:{ title:{ text:null } }, tooltip:{ valueSuffix:suffix },
+      series:[
+        { name:R1, data:(a1||[]).map(function(p){return p.y;}), color:'#206bc4' },
+        { name:R2, data:(a2||[]).map(function(p){return p.y;}), color:'#d6336c' }
+      ]
+    });
+  }
+
+  function avg(a){ var v=(a||[]).map(function(p){return p.y;}); return v.length?(v.reduce(function(x,y){return x+y;},0)/v.length):0; }
+
+  $(document).ready(function(){
+    // 加载指标对比表
+    var L1=d1.load||{}, L2=d2.load||{};
+    var keys=[['fp','白屏FP'],['lcp','首屏LCP'],['fcp','FCP'],['ttfb','TTFB'],['dcl','DCL'],['load','Load'],['tbt','TBT'],['tti','TTI~']];
+    var rows='';
+    keys.forEach(function(k){
+      var v1=L1[k[0]]||0, v2=L2[k[0]]||0, dv=Math.round((v2-v1)*10)/10;
+      var cls=dv>0?'delta-up':(dv<0?'delta-down':'');
+      rows+='<tr><td>'+k[1]+' (ms)</td><td>'+v1+'</td><td>'+v2+'</td><td class="'+cls+'">'+(dv>0?'+':'')+dv+'</td></tr>';
+    });
+    $('#cmp-load-body').html(rows);
+
+    cmpChart('c-fps', lan=='cn'?'页面 FPS':'FPS', '', d1.fps, d2.fps);
+    cmpChart('c-heap', lan=='cn'?'JS堆 (MB)':'Heap', ' MB', d1.heap, d2.heap);
+    cmpChart('c-nodes', lan=='cn'?'DOM 节点':'Nodes', '', d1.nodes, d2.nodes);
+    cmpChart('c-longtask', lan=='cn'?'长任务 (每次新增)':'Long Tasks', '', d1.longtask, d2.longtask);
+    cmpChart('c-listeners', lan=='cn'?'JS 监听器':'Listeners', '', d1.listeners, d2.listeners);
+    cmpChart('c-inp', lan=='cn'?'INP (ms)':'INP', ' ms', d1.inp, d2.inp);
+
+    if((d1.hostTemp||[]).length || (d2.hostTemp||[]).length){
+      $('#c-host').show();
+      cmpChart('c-hcpu', lan=='cn'?'宿主CPU系统 %':'Host CPU%', ' %', d1.hostCpuSys, d2.hostCpuSys);
+      cmpChart('c-hgpu', lan=='cn'?'宿主GPU %':'Host GPU%', ' %', d1.hostGpu, d2.hostGpu);
+      cmpChart('c-htemp', lan=='cn'?'表层温度 ℃':'Temp', ' ℃', d1.hostTemp, d2.hostTemp);
+    }
+  });
+</script>
+{% endblock %}

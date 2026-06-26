@@ -31,7 +31,16 @@
       <div><strong>{% if lan == 'cn' %}页面{% else %}URL{% endif %}:</strong> <span style="word-break:break-all;">{{ h5_data.app }}</span></div>
       <div><strong>{% if lan == 'cn' %}设备{% else %}Device{% endif %}:</strong> {{ h5_data.devices }} &nbsp;&nbsp; <strong>{% if lan == 'cn' %}时间{% else %}Time{% endif %}:</strong> {{ h5_data.ctime }}</div>
     </div>
-    <button id="btn-export" class="btn btn-outline-primary flex-shrink-0 ms-2" onclick="exportHtml()">{% if lan == 'cn' %}导出 HTML{% else %}Export HTML{% endif %}</button>
+    <div class="flex-shrink-0 ms-2 d-flex align-items-center">
+      {% if h5_scenes %}
+      <select id="cmp-scene" class="form-select form-select-sm" style="width:auto;max-width:240px">
+        <option value="">{% if lan == 'cn' %}选对比报告...{% else %}compare with...{% endif %}</option>
+        {% for s in h5_scenes %}<option value="{{ s.scene }}">{{ s.ctime }} | {{ s.app[:24] }}</option>{% endfor %}
+      </select>
+      <button class="btn btn-outline-success btn-sm ms-1" onclick="compareH5()">{% if lan == 'cn' %}对比{% else %}Compare{% endif %}</button>
+      {% endif %}
+      <button id="btn-export" class="btn btn-outline-primary ms-1" onclick="exportHtml()">{% if lan == 'cn' %}导出 HTML{% else %}Export{% endif %}</button>
+    </div>
   </div></div>
 
   <!-- 加载成绩单 -->
@@ -142,6 +151,13 @@
         { name:names[1], data: cpuSys.map(function(p){return p.y;}), color:colors[1] }
       ]
     });
+  }
+
+  // 对比另一份 H5 报告
+  function compareH5(){
+    var s2 = $('#cmp-scene').val();
+    if(!s2){ SwalFire('warning', lan=='cn'?'请选择要对比的报告':'Select a report to compare', '', 3000); return; }
+    window.location.href = '/h5_compare?scene1={{ scene }}&scene2=' + encodeURIComponent(s2) + '&lan=' + lan;
   }
 
   // 导出自包含 HTML:克隆已渲染页面(图表已是SVG) + 内联样式 + 去脚本,可离线打开/分享

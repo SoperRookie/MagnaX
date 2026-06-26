@@ -63,7 +63,7 @@
           <button class="btn btn-outline-primary" onclick="refreshPages()">{% if lan == 'cn' %}刷新页面{% else %}Refresh{% endif %}</button>
           <button class="btn btn-primary" onclick="testLoad()">{% if lan == 'cn' %}测加载{% else %}Load{% endif %}</button>
           <button class="btn btn-success" id="btn-start" onclick="startMonitor()">{% if lan == 'cn' %}开始监控{% else %}Start{% endif %}</button>
-          <button class="btn btn-danger" id="btn-stop" onclick="stopMonitor()" disabled>{% if lan == 'cn' %}停止{% else %}Stop{% endif %}</button>
+          <button class="btn btn-danger" id="btn-stop" onclick="stopAndClear()" disabled>{% if lan == 'cn' %}停止{% else %}Stop{% endif %}</button>
           <button class="btn btn-outline-success" onclick="saveH5Report()">{% if lan == 'cn' %}保存报告{% else %}Save{% endif %}</button>
         </div>
       </div>
@@ -175,6 +175,7 @@
   var charts = {};
   var lastLongtask = null;  // 上次的长任务累计值,用于算每次采样的新增量
   var lastLayout = null, lastRecalc = null;  // 布局/样式重算累计值,算每次新增
+  var h5SessionActive = false;  // 一次测试会话进行中(从首次测加载/开始监控到保存)
   var h5PageUrls = {};      // ws -> 页面url,保存报告时用作页面标识
   var h5TargetPkgs = {};    // socket -> 包名(选 WebView 时自动填宿主包名)
 
@@ -247,6 +248,7 @@
   // 测一次加载
   function testLoad(){
     if(!h5Ws()){ SwalFire('warning', lan=='cn'?'请选择页面':'Select a page', '', 3000); return; }
+    ensureSession(function(){   // 测加载也算会话开始,首次清空旧数据
     $.ajax({
       url: Host + '/apm/h5/load', type:'GET', cache:false, timeout:60000,
       data:{ device: h5Device(), ws: h5Ws(), socket: h5Socket() },
@@ -261,6 +263,7 @@
       },
       error:function(){ swal.close(); SwalFire('error','Server Error','',4000); }
     });
+    });  // 关闭 ensureSession
   }
 
   function h5HostPkg(){ return ($('#h5-host-pkg').val()||'').trim(); }
@@ -309,7 +312,8 @@
   function pushPoint(chart, val, idx){
     if(!chart) return;
     var s = chart.series[idx || 0];
-    s.addPoint([(new Date()).getTime(), Number(val)], true, s.data.length > 150);
+    // 不再用150点滑窗,显示整个会话(从开始监控到结束);5000点上限仅防极长会话卡顿
+    s.addPoint([(new Date()).getTime(), Number(val)], true, s.data.length > 5000);
   }
 
   // 宿主进程原生指标(发热归因):CPU/GPU/温度。复用现有原生接口,与 H5 层同时间轴。
@@ -368,22 +372,51 @@
     });
   }
 
+  // 清空前端显示(图表/表格/加载成绩单/累积基准)
+  function clearH5Display(){
+    Object.keys(charts).forEach(function(k){
+      var c = charts[k];
+      if(c && c.series){ c.series.forEach(function(s){ s.setData([], false); }); try{ c.redraw(); }catch(e){} }
+    });
+    $('#lt-body').html('<tr><td colspan="3" class="text-muted">'+(lan=='cn'?'监控中实时更新':'updates while monitoring')+'</td></tr>');
+    $('#wf-body').html('<tr><td colspan="7" class="text-muted">-</td></tr>');
+    $('#h5-prof-body').html('<tr><td colspan="5" class="text-muted">-</td></tr>');
+    ['m-fp','m-lcp','m-fcp','m-ttfb','m-dcl','m-load','m-cls','m-tbt','m-tti','m-heap','m-nodes'].forEach(function(id){ $('#'+id).text('-'); });
+    lastLongtask=null; lastLayout=null; lastRecalc=null;
+  }
+
+  // 确保处于一次"干净"的测试会话:首次动作(测加载/开始监控)清空后端旧日志+前端,
+  // 保证报告只含本次会话、从头到尾。cb 在准备好后执行。
+  function ensureSession(cb){
+    if(h5SessionActive){ cb(); return; }
+    $.ajax({ url: Host+'/apm/h5/clear', type:'GET', cache:false, timeout:8000,
+      complete:function(){ h5SessionActive = true; clearH5Display(); cb(); } });
+  }
+
   function startMonitor(){
     if(!h5Ws()){ SwalFire('warning', lan=='cn'?'请选择页面':'Select a page', '', 3000); return; }
     if(h5Running) return;
-    lastLongtask = null; lastLayout = null; lastRecalc = null;  // 重置累计基准
-    if(!charts.fps) initCharts();
-    $('#btn-start').prop('disabled', true); $('#btn-stop').prop('disabled', false);
-    h5Running = true;
-    pollRuntime();  // 自配速:每次轮询在 complete 里排下一次,不会堆积
-    if($('#h5-prof-live').is(':checked')){ runProfile(true); }  // 勾选则随监控滚动剖析
-    if($('#wf-live').is(':checked')){ wfFirstWindow = true; runWaterfall(true); }  // 随监控滚动抓网络活动(累积整会话)
+    ensureSession(function(){   // 新会话先清空(后端日志+前端),保证从头到尾
+      if(!charts.fps) initCharts();
+      $('#btn-start').prop('disabled', true); $('#btn-stop').prop('disabled', false);
+      h5Running = true;
+      pollRuntime();  // 自配速:每次轮询在 complete 里排下一次,不会堆积
+      if($('#h5-prof-live').is(':checked')){ runProfile(true); }  // 勾选则随监控滚动剖析
+      if($('#wf-live').is(':checked')){ wfFirstWindow = true; runWaterfall(true); }  // 随监控滚动抓网络活动(累积整会话)
+    });
   }
 
   function stopMonitor(){
     h5Running = false;
     if(h5Timer){ clearTimeout(h5Timer); h5Timer = null; }
     $('#btn-start').prop('disabled', false); $('#btn-stop').prop('disabled', true);
+  }
+
+  // 用户手动点"停止":停止+清空页面+结束会话(后端日志仍在,可保存或下次测试时清)
+  function stopAndClear(){
+    stopMonitor();
+    clearH5Display();
+    h5SessionActive = false;
   }
 
   // 保存报告:先停监控(避免日志被边写边移动),再归档
@@ -398,7 +431,10 @@
       success:function(d){
         swal.close();
         if(d['status'] != 1){ SwalFire('error', lan=='cn'?'保存失败':'Failed', d['msg']||'', 5000); return; }
-        SwalFire('success', lan=='cn'?'已保存':'Saved', lan=='cn'?'可在报告列表查看':'See report list', 2500);
+        // 保存后:后端日志已被 make_report 归档,清空前端显示并结束会话(下次测试从头开始)
+        clearH5Display();
+        h5SessionActive = false;
+        SwalFire('success', lan=='cn'?'已保存':'Saved', lan=='cn'?'报告列表查看;页面已清空,可开始新测试':'See report list', 2500);
       },
       error:function(){ swal.close(); SwalFire('error','Server Error','',4000); }
     });
