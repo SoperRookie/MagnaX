@@ -48,12 +48,15 @@ def builtin_adb_path():
     system = platform.system()
     machine = platform.machine()
     adb_path = DEFAULT_ADB_PATH.get('{}-{}'.format(system, machine))
-    proc = subprocess.Popen('adb devices', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-    out, _ = proc.communicate()
-    result = out.decode('utf-8', errors='ignore') if isinstance(out, bytes) else (out or '')
-    if result and "command not found" not in result:
-        adb_path = "adb"
-        return adb_path
+    # 优先使用系统 PATH 里的 adb：用返回码判断是否可用，比解析 stdout/"command not found"
+    # 更可靠（Windows 上 adb 不存在时报错走的是 stderr，旧逻辑会误判为“没有 adb”而退回内置）。
+    try:
+        proc = subprocess.Popen('adb version', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        proc.communicate()
+        if proc.returncode == 0:
+            return "adb"
+    except Exception:
+        pass
 
     if not adb_path:
         adb_path = DEFAULT_ADB_PATH.get(system)
