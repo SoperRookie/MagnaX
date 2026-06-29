@@ -21,11 +21,16 @@
 {% block page_body %}
 <div class="container-xl">
 
-  <div class="card mb-3"><div class="card-body row">
-    <div class="col-md-6"><strong style="color:#206bc4;">{% if lan == 'cn' %}报告1{% else %}Report 1{% endif %}</strong><br>
-      <span style="word-break:break-all">{{ d1.app }}</span><br><span class="text-muted">{{ d1.ctime }} · {{ d1.devices }}</span></div>
-    <div class="col-md-6"><strong style="color:#d6336c;">{% if lan == 'cn' %}报告2{% else %}Report 2{% endif %}</strong><br>
-      <span style="word-break:break-all">{{ d2.app }}</span><br><span class="text-muted">{{ d2.ctime }} · {{ d2.devices }}</span></div>
+  <div class="card mb-3"><div class="card-body">
+    <div class="d-flex justify-content-end mb-2">
+      <button id="btn-export" class="btn btn-outline-primary btn-sm" onclick="exportHtml()">{% if lan == 'cn' %}导出 HTML{% else %}Export HTML{% endif %}</button>
+    </div>
+    <div class="row">
+      <div class="col-md-6"><strong style="color:#206bc4;">{% if lan == 'cn' %}报告1{% else %}Report 1{% endif %}</strong><br>
+        <span style="word-break:break-all">{{ d1.app }}</span><br><span class="text-muted">{{ d1.ctime }} · {{ d1.devices }}</span></div>
+      <div class="col-md-6"><strong style="color:#d6336c;">{% if lan == 'cn' %}报告2{% else %}Report 2{% endif %}</strong><br>
+        <span style="word-break:break-all">{{ d2.app }}</span><br><span class="text-muted">{{ d2.ctime }} · {{ d2.devices }}</span></div>
+    </div>
   </div></div>
 
   <!-- 加载指标对比 -->
@@ -64,6 +69,32 @@
   var d1 = {{ d1 | tojson }};
   var d2 = {{ d2 | tojson }};
   var R1 = lan=='cn'?'报告1':'R1', R2 = lan=='cn'?'报告2':'R2';
+
+  // 导出自包含 HTML(克隆已渲染页面 + 内联样式 + 去脚本,可离线打开/分享)
+  function exportHtml(){
+    var btn = document.getElementById('btn-export');
+    btn.disabled = true; btn.textContent = (lan=='cn'?'导出中...':'Exporting...');
+    var links = Array.prototype.slice.call(document.querySelectorAll('link[rel="stylesheet"]'));
+    Promise.all(links.map(function(l){
+      return fetch(l.href).then(function(r){return r.text();})
+        .then(function(css){ return {href:l.getAttribute('href'), css:css}; }).catch(function(){ return null; });
+    })).then(function(results){
+      var clone = document.documentElement.cloneNode(true);
+      clone.querySelectorAll('script').forEach(function(s){ s.remove(); });
+      var eb = clone.querySelector('#btn-export'); if(eb) eb.remove();
+      var cssMap = {}; results.forEach(function(x){ if(x) cssMap[x.href]=x.css; });
+      clone.querySelectorAll('link[rel="stylesheet"]').forEach(function(l){
+        var css = cssMap[l.getAttribute('href')];
+        if(css!=null){ var st=document.createElement('style'); st.textContent=css; l.replaceWith(st); }
+        else { l.remove(); }
+      });
+      var blob = new Blob(['<!DOCTYPE html>\n'+clone.outerHTML], {type:'text/html;charset=utf-8'});
+      var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = 'H5compare_' + ((d1.ctime)||'r1') + '_vs_' + ((d2.ctime)||'r2') + '.html';
+      document.body.appendChild(a); a.click(); a.remove();
+      btn.disabled = false; btn.textContent = (lan=='cn'?'导出 HTML':'Export HTML');
+    });
+  }
 
   function cmpChart(id, title, suffix, a1, a2){
     Highcharts.chart(id, {

@@ -608,6 +608,34 @@ class PMD3PerformanceAdapter:
             logger.error(f"[iOS Perf] get_cpu failed: {e}")
             return (self._cache.cpu_app, self._cache.cpu_sys)
 
+    # 不同 iOS 版本/机型 Sysmontap 返回的内存字段名不一致，按优先级尝试这些已知字段
+    _MEM_FIELDS = ('physFootprint', 'memResidentSize', 'memRShrd',
+                   'memRPrvt', 'memAnon', 'memVirtualSize')
+
+    def _extract_memory_bytes(self, proc: Dict) -> float:
+        """从进程信息里提取内存字节数，兼容不同 iOS 版本的字段命名。"""
+        # 1) 先按已知字段名取
+        for key in self._MEM_FIELDS:
+            val = proc.get(key)
+            if isinstance(val, (int, float)) and val > 0:
+                return float(val)
+        # 2) 已知字段都没有 → 启发式扫描任何像内存的字段（footprint/resident/mem*）
+        candidates = {k: v for k, v in proc.items()
+                      if isinstance(v, (int, float)) and v > 0
+                      and ('footprint' in k.lower() or 'resident' in k.lower()
+                           or k.lower().startswith('mem'))}
+        if candidates:
+            # 取数值最大的那个（通常即占用内存），并打印出来便于确认字段名
+            key = max(candidates, key=candidates.get)
+            logger.warning(f"[iOS Perf] 已知内存字段缺失，启发式采用 '{key}'={candidates[key]}; "
+                           f"该进程全部内存类字段: {candidates}")
+            return float(candidates[key])
+        # 3) 彻底没有 → 打印该进程所有数值字段，方便定位
+        nums = {k: v for k, v in proc.items() if isinstance(v, (int, float))}
+        logger.warning(f"[iOS Perf] 进程 {proc.get('name')} 未找到任何内存字段, "
+                       f"可用数值字段: {nums}")
+        return 0.0
+
     def get_memory(self) -> float:
         """Get memory usage in MB."""
         try:
@@ -616,12 +644,9 @@ class PMD3PerformanceAdapter:
             if processes:
                 app_proc = self._find_app_process(processes)
                 if app_proc:
-                    # physFootprint is the most accurate for app memory
-                    mem_bytes = (app_proc.get('physFootprint', 0) or
-                                app_proc.get('memResidentSize', 0) or
-                                app_proc.get('memVirtualSize', 0) or 0)
+                    mem_bytes = self._extract_memory_bytes(app_proc)
 
-                    if isinstance(mem_bytes, (int, float)) and mem_bytes > 0:
+                    if mem_bytes > 0:
                         # Convert to MB
                         if mem_bytes > 1000000:  # Bytes
                             self._cache.memory_mb = round(mem_bytes / (1024 * 1024), 2)
