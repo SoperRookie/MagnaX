@@ -66,6 +66,11 @@ def builtin_adb_path():
     if system != "Windows":
         # chmod +x adb
         make_file_executable(adb_path)
+
+    # adb 的安装路径可能含空格（Windows 用户名/安装目录），命令未加引号时 shell 会在空格处
+    # 截断路径去执行一个目录，导致“拒绝访问/Access denied”。此处统一加引号，兼容所有调用点。
+    if " " in adb_path:
+        adb_path = '"{}"'.format(adb_path)
     return adb_path
 
 
