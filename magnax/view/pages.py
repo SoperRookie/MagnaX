@@ -38,7 +38,7 @@ def h5():
 def _list_h5_scenes(exclude=None):
     """列出所有 H5 报告场景(用于对比下拉),按时间倒序"""
     scenes = []
-    report_dir = os.path.join(os.getcwd(), 'report')
+    report_dir = f.report_dir
     if os.path.isdir(report_dir):
         for dirn in sorted(os.listdir(report_dir), reverse=True):
             rj = os.path.join(report_dir, dirn, 'result.json')
@@ -92,7 +92,7 @@ def pk():
 def report():
     lan = request.args.get('lan')
     settings = m._settings(request)
-    report_dir = os.path.join(os.getcwd(), 'report')
+    report_dir = f.report_dir
     if not os.path.exists(report_dir):
         os.mkdir(report_dir)
     dirs = os.listdir(report_dir)
@@ -129,7 +129,7 @@ def analysis():
     app = request.args.get('app')
     platform = request.args.get('platform')
     settings = m._settings(request)
-    report_dir = os.path.join(os.getcwd(), 'report')
+    report_dir = f.report_dir
     if not os.path.exists(report_dir):
         os.makedirs(report_dir, exist_ok=True)
     dirs = os.listdir(report_dir)
@@ -167,7 +167,7 @@ def analysis_pk():
     app = request.args.get('app')
     model = request.args.get('model')
     settings = m._settings(request)
-    report_dir = os.path.join(os.getcwd(), 'report')
+    report_dir = f.report_dir
     if not os.path.exists(report_dir):
         os.makedirs(report_dir, exist_ok=True)
     dirs = os.listdir(report_dir)

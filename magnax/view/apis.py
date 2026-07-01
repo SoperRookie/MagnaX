@@ -769,7 +769,7 @@ def editReport():
     """Edit test report records"""
     old_scene = method._request(request, 'old_scene')
     new_scene = method._request(request, 'new_scene')
-    report_dir = os.path.join(os.getcwd(), 'report')
+    report_dir = f.report_dir
     if old_scene == new_scene:
         result = {'status': 0, 'msg': 'scene not changed'}
     elif os.path.exists(os.path.join(report_dir, new_scene)):
@@ -977,7 +977,7 @@ def getpkLogData():
 def removeReport():
     """Remove test report record"""
     scene = method._request(request, 'scene')
-    report_dir = os.path.join(os.getcwd(), 'report')
+    report_dir = f.report_dir
     try:
         shutil.rmtree(f'{report_dir}/{scene}', True)
         result = {'status': 1}
