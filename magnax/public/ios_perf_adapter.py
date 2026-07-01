@@ -36,6 +36,32 @@ def _run_async(coro):
         return asyncio.run(coro)
 
 
+# tunneld 无可用设备(隧道断)时的告警节流:高频采集下每次都 warn 会刷屏,
+# 这里做全局限流,最多每 _TUNNELD_WARN_INTERVAL 秒告警一次。
+_last_tunneld_warn_time: float = 0.0
+_TUNNELD_WARN_INTERVAL = 15.0
+
+
+def _warn_tunneld_missing(device_id: Optional[str]) -> None:
+    """iOS 17+ 场景下 tunneld 拿不到设备(隧道已断)时,给出明确可操作的告警。
+
+    设备重插/休眠、tunneld 进程状态卡死后很常见,一旦隧道断,CPU/内存/FPS/GPU/网络
+    会全部静默变 0。这里把原来的 debug 提升为可见 WARNING(节流),避免下次再当成
+    '某个 App 采不到数据' 反复排查。
+    """
+    global _last_tunneld_warn_time
+    now = time.time()
+    if now - _last_tunneld_warn_time < _TUNNELD_WARN_INTERVAL:
+        return
+    _last_tunneld_warn_time = now
+    logger.warning(
+        "[iOS Perf] tunneld 无可用设备,隧道可能已断(设备重插/休眠或 tunneld 卡死后常见)"
+        " —— iOS 17+ 所有性能数据都会变 0。请重启 tunneld:\n"
+        "  sudo python3 -m pymobiledevice3 remote tunneld\n"
+        f"  (目标设备: {device_id})"
+    )
+
+
 @dataclass
 class PerformanceCache:
     """Performance data cache with TTL support."""
@@ -185,14 +211,13 @@ class PMD3PerformanceAdapter:
             rsd = self._get_tunnel_rsd()
             if rsd is None:
                 self._init_error = (
-                    "iOS 17+ requires tunnel service. Please run:\n"
-                    "  sudo python3 -m pymobiledevice3 remote start-tunnel\n"
-                    "Or keep tunneld running in background:\n"
-                    "  sudo python3 -m pymobiledevice3 remote tunneld"
+                    "tunneld 无可用设备,隧道可能已断。iOS 17+ 需要隧道服务,请重启 tunneld:\n"
+                    "  sudo python3 -m pymobiledevice3 remote tunneld\n"
+                    "(设备重插/休眠或 tunneld 卡死后,所有 iOS 性能数据会静默变 0)"
                 )
-                # 瞬时无 rsd 时由上层 _ensure_connected 重试,此处降为 debug 避免刷屏;
-                # 真正持续失败时上层会记录连接错误,采集端也会体现无数据
-                logger.debug(f"[iOS Perf] {self._init_error}")
+                # 瞬时无 rsd 时由上层 _ensure_connected 重试,单次不刷屏;
+                # 但通过节流的 _warn_tunneld_missing 给出可见告警,避免"静默返回 0"难以排查。
+                _warn_tunneld_missing(self.device_id)
                 return None
 
             self._rsd = rsd
@@ -450,17 +475,42 @@ class PMD3PerformanceAdapter:
                     self._close_dvt()
                 return self._graphics_data
 
+    def _match_by_pid(self, processes: List[Dict]) -> Optional[Dict]:
+        """按 PID 精确匹配进程。
+        pid 在不同 iOS 版本/机型可能是 int 或 str,这里统一转 int 比较,
+        避免 '362' == 362 这类类型不一致导致漏匹配。"""
+        if not self._target_pid:
+            return None
+        for proc in processes:
+            pid = proc.get('pid')
+            try:
+                if int(pid) == int(self._target_pid):
+                    return proc
+            except (TypeError, ValueError):
+                continue
+        return None
+
     def _find_app_process(self, processes: List[Dict]) -> Optional[Dict]:
         """Find process matching bundle_id using multiple matching strategies."""
         if not processes or not self.bundle_id:
             return None
 
-        # If we have a resolved PID, use it directly
-        if self._target_pid:
-            for proc in processes:
-                if proc.get('pid') == self._target_pid:
-                    return proc
+        # 1) 优先按 PID 精确匹配。
+        #    cocos/引擎打包的 App 可执行名会被混淆(如 x5N4GZCHysB),与 bundle_id、
+        #    显示名毫不相干,后面的"按名字打分"对它们永远打不中,PID 是唯一可靠方式。
+        proc = self._match_by_pid(processes)
+        if proc is not None:
+            return proc
 
+        # 2) PID 没命中:可能是首次尚未解析,或 App 重启/切换导致 PID 变化。
+        #    重新用 ProcessControl 解析一次 PID 再试,而不是直接退回脆弱的名字匹配 ——
+        #    这样混淆名的 cocos 包在 PID 抖动时也能稳定恢复,不会静默丢数据。
+        self._resolve_target_pid()
+        proc = self._match_by_pid(processes)
+        if proc is not None:
+            return proc
+
+        # 3) 仍未命中,退回按名字打分(仅对进程名与 bundle_id 相近的普通 App 有效)。
         bundle_id_lower = self.bundle_id.lower()
         app_name = self.bundle_id.split('.')[-1].lower()
 
