@@ -553,13 +553,13 @@ class File:
         return dir_list
 
     def get_repordir(self):
-        # 报告固定存放在用户目录下的 ~/MagnaX/report,不再随启动时的当前工作目录
-        # (os.getcwd())变化。此前用 os.getcwd()/report,从不同目录(python -m magnax
-        # vs cd magnax && python debug.py)或双击启动时 cwd 不同,历史报告会分散在各自
-        # 的 report/ 里,导致"二次启动加载不到历史报告"。固定到用户目录后从任何位置启动
-        # 都指向同一处。
-        report_dir = os.path.join(os.path.expanduser('~'), 'MagnaX', 'report')
-        os.makedirs(report_dir, exist_ok=True)
+        # 报告按"当前工作目录"存放:在哪个目录启动就读写哪个目录下的 report/,
+        # 便于把不同测试项目放在各自目录、各自独立管理历史报告。
+        # 注意:若在 A 目录启动了服务却没关闭,再在 B 目录启动会因端口占用而复用旧进程
+        #(旧进程 cwd 仍是 A),表现为"读不到 B 的报告"——此时先关掉旧服务再启动即可。
+        report_dir = os.path.join(os.getcwd(), 'report')
+        if not os.path.exists(report_dir):
+            os.mkdir(report_dir)
         return report_dir
 
     def create_file(self, filename, content=''):
