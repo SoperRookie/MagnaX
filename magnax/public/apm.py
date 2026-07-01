@@ -621,7 +621,10 @@ class GPU(object):
                 return self._getGpuRateFallback()
             
             # 验证数据格式
-            parts = result.strip().split(' ')
+            # gpubusy 格式为右对齐的 "  busy  total"(多空格/制表符分隔),
+            # 必须用 split() 按连续空白智能分割;用 split(' ') 会切出一堆空串,
+            # 导致 parts[1] 为空被误判为无效 → 所有 Adreno 机型 GPU 恒为 0(与平台无关)。
+            parts = result.strip().split()
             if len(parts) < 2:
                 logger.warning(f'[GPU] kgsl数据格式错误: {result}')
                 return self._getGpuRateFallback()
