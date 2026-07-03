@@ -1080,23 +1080,38 @@ class File:
         return result
     
     def getBatteryLogCompare(self, platform, scene1, scene2, max_points=0):
-        targetDic = dict()
+        # 对比页与单报告保持一致:返回全部电池维度(而非原来只有单一 level/power),
+        # 每个维度各含 scene1/scene2 两条序列,前端按维度分别绘图。
+        # 原来只对比 Android=level / iOS=power 一条,且标题写死 "Battery: Level",
+        # 导致温度/电流/电压看不到、iOS 还标错 —— 这是"对比缺电量曲线"的根因。
         if platform == Platform.Android:
-            scene1_data, _, scene1_total = self.readLog(scene=scene1, filename='battery_level.log', max_points=max_points)
-            scene2_data, _, scene2_total = self.readLog(scene=scene2, filename='battery_level.log', max_points=max_points)
+            dim_files = [('batteryLevel', 'battery_level.log'),
+                         ('batteryTem', 'battery_tem.log')]
         else:
-            scene1_data, _, scene1_total = self.readLog(scene=scene1, filename='battery_power.log', max_points=max_points)
-            scene2_data, _, scene2_total = self.readLog(scene=scene2, filename='battery_power.log', max_points=max_points)
-        targetDic['scene1'] = scene1_data
-        targetDic['scene2'] = scene2_data
+            dim_files = [('batteryTem', 'battery_tem.log'),
+                         ('batteryCurrent', 'battery_current.log'),
+                         ('batteryVoltage', 'battery_voltage.log'),
+                         ('batteryPower', 'battery_power.log')]
+        dims = dict()
+        total_points = 0
+        for key, fname in dim_files:
+            s1, _, t1 = self.readLog(scene=scene1, filename=fname, max_points=max_points)
+            s2, _, t2 = self.readLog(scene=scene2, filename=fname, max_points=max_points)
+            dims[key] = {'scene1': s1, 'scene2': s2}
+            total_points = max(total_points, t1, t2)
+        order = [k for k, _ in dim_files]
+        # 向后兼容:顶层 scene1/scene2 指向主维度(Android=电量, iOS=功率)
+        primary = 'batteryLevel' if platform == Platform.Android else 'batteryPower'
         result = {
             'status': 1,
-            'scene1': targetDic['scene1'],
-            'scene2': targetDic['scene2'],
+            'dims': dims,
+            'order': order,
+            'scene1': dims[primary]['scene1'],
+            'scene2': dims[primary]['scene2'],
             'meta': {
-                'sampled': max_points > 0 and max(scene1_total, scene2_total) > max_points,
+                'sampled': max_points > 0 and total_points > max_points,
                 'max_points': max_points,
-                'total_points': max(scene1_total, scene2_total)
+                'total_points': total_points
             }
         }
         return result

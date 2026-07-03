@@ -100,6 +100,13 @@ class PMD3PerformanceAdapter:
     # 结构: {device_id: (rx_bytes, tx_bytes, timestamp)}
     _net_baseline: Dict[str, Tuple[int, int, float]] = {}
 
+    # CPU 差值基准,同样按 device_id 跨 adapter 实例保留。
+    # app/系统 CPU 靠 cpuTotalUser+cpuTotalSystem 两次读数做差分,基准若放实例级,
+    # "方案B"每次采集后 close() 销毁 adapter -> 每帧都是首帧 -> app CPU 恒为 0。
+    # 与 _net_baseline 同样的坑,之前只修了网络漏了 CPU。
+    # 结构: {device_id: (last_cpu_total{pid: int}, last_cpu_time)}
+    _cpu_baseline: Dict[str, Tuple[Dict[int, int], float]] = {}
+
     def __init__(self, device_id: str, bundle_id: str):
         self.device_id = device_id
         self.bundle_id = bundle_id
@@ -613,6 +620,13 @@ class PMD3PerformanceAdapter:
             system_data, processes = self._collect_sysmontap_data()
             current_time = time.time()
 
+            # 从类级基准恢复上次读数(跨 adapter 实例/跨采集保留)。
+            # 否则方案B每帧新建 adapter -> 基准为空 -> 差分恒 0 -> app CPU 永远采不到。
+            last_total, last_time = PMD3PerformanceAdapter._cpu_baseline.get(
+                self.device_id, ({}, 0.0))
+            self._last_cpu_total = dict(last_total)
+            self._last_cpu_time = last_time
+
             app_cpu = 0.0
             sys_cpu = 0.0
             cpu_count = system_data.get('CPUCount', 6) if system_data else 6
@@ -649,6 +663,9 @@ class PMD3PerformanceAdapter:
 
             # Update last CPU time for delta calculations
             self._last_cpu_time = current_time
+            # 持久化基准到类级,供下次采集(新 adapter)做差分
+            PMD3PerformanceAdapter._cpu_baseline[self.device_id] = (
+                self._last_cpu_total, current_time)
 
             self._cache.cpu_app = round(app_cpu, 2)
             self._cache.cpu_sys = round(min(sys_cpu, 100.0), 2)  # Cap at 100%
