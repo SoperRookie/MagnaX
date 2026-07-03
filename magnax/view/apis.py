@@ -1137,6 +1137,10 @@ def start_record():
     device = method._request(request, 'device')
     platform = method._request(request, 'platform')
     try:
+        # 起进程前先确认 scrcpy 可用,避免 os.system 后台化假报成功(点了没反应也不报错)
+        available, msg = Scrcpy.check_available()
+        if not available:
+            return {'status': 0, 'msg': msg}
         deviceId = d.getIdbyDevice(device, platform)
         final = Scrcpy.start_record(deviceId)
         if final == 0:
@@ -1153,6 +1157,10 @@ def cast_screen():
     device = method._request(request, 'device')
     platform = method._request(request, 'platform')
     try:
+        # 起进程前先确认 scrcpy 可用,避免 os.system 后台化假报成功(点了没反应也不报错)
+        available, msg = Scrcpy.check_available()
+        if not available:
+            return {'status': 0, 'msg': msg}
         deviceId = d.getIdbyDevice(device, platform)
         final = Scrcpy.cast_screen(deviceId)
         if final == 0:
