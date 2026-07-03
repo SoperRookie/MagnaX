@@ -833,6 +833,45 @@ def get_ios_version(device_id: str) -> Optional[str]:
         return None
 
 
+def check_tunnel_down(device_id: Optional[str]) -> Optional[str]:
+    """检查 iOS 17+ 的 tunneld 隧道是否可用。
+
+    返回 None 表示无需担心(设备非 iOS 17+ 走 USB,或隧道正常握着设备);
+    返回一段可操作的错误提示字符串,表示隧道已断——此时 CPU/内存/FPS/GPU/网络
+    会全部静默变 0,需要重启 tunneld。
+
+    注意:此函数会做一次 usbmux/隧道查询,有百毫秒级开销。调用方应仅在采集到
+    「全 0」数据时才调用它做诊断,不要放进高频 happy path。
+    """
+    # 非 iOS 17+ 走 USB,不依赖 tunneld,隧道列表为空也正常,直接放行。
+    # 版本探测失败(设备可能已拔)时不下结论,继续查隧道。
+    try:
+        if not is_ios17_or_above(device_id):
+            return None
+    except Exception:
+        pass
+
+    try:
+        from pymobiledevice3.tunneld.api import get_tunneld_devices
+        devices = get_tunneld_devices()
+        for rsd in devices or []:
+            if device_id is None or device_id in str(rsd.udid):
+                return None  # 隧道正常握着这台设备
+        # tunneld 在跑但列表里没有这台设备 —— 隧道确实断了
+        return (
+            "tunneld 隧道已断,iOS 17+ 所有性能数据(CPU/内存/FPS/GPU/网络)会全部为 0。"
+            "请重启 tunneld:sudo python3 -m pymobiledevice3 remote tunneld"
+            "(设备重插/休眠或 WiFi 连接不稳时常见)"
+        )
+    except ImportError:
+        return None
+    except Exception as e:
+        return (
+            f"tunneld 隧道状态检查失败({type(e).__name__}: {e}),iOS 17+ 需要 tunneld 运行。"
+            "请确认已执行:sudo python3 -m pymobiledevice3 remote tunneld"
+        )
+
+
 def is_ios17_or_above(device_id: str) -> bool:
     """Check if device is running iOS 17 or above."""
     version = get_ios_version(device_id)

@@ -10,11 +10,31 @@ from magnax import __version__
 from magnax.public.apm import (CPU, Memory, Network, FPS, Battery, GPU, Energy, Disk,ThermalSensor, Target)
 from magnax.public.apm_pk import (CPU_PK, MEM_PK, Flow_PK, FPS_PK)
 from magnax.public.common import (Devices, File, Method, Install, Platform, Scrcpy, REPORT_CHART_MAX_POINTS)
+from magnax.public.ios_perf_adapter import check_tunnel_down
 
 d = Devices()
 f = File()
 api = Blueprint("api", __name__)
 method = Method()
+
+# iOS 17+ 这些指标都依赖 tunneld 隧道,隧道一断就会静默返回全 0。
+# 采集到全 0 时用这张表定位「相关字段是否全为 0」,再决定要不要做隧道体检。
+_IOS_TUNNEL_TARGETS = {
+    Target.CPU: ('appCpuRate', 'systemCpuRate'),
+    Target.Memory: ('totalPass',),
+    Target.Network: ('upflow', 'downflow'),
+    Target.FPS: ('fps',),
+    Target.GPU: ('gpu',),
+}
+
+
+def _ios_result_all_zero(target, result):
+    """判断 iOS 采集结果是否为「全 0」(隧道断的典型症状)。"""
+    fields = _IOS_TUNNEL_TARGETS.get(target)
+    if not fields or not isinstance(result, dict) or result.get('status') != 1:
+        return False
+    # 0 / 0.0 / None 都算 0;只要相关字段全为 0 才认为可疑
+    return all(not result.get(field) for field in fields)
 
 @api.route('/apm/cookie', methods=['post', 'get'])
 def setCookie():
@@ -1034,6 +1054,14 @@ def apmCollect():
     except Exception as e:
         logger.exception(e)
         result = {'status': 0, 'msg': str(e)}
+    # iOS 17+ 隧道断时所有性能数据会静默变 0,前端只看到 0 无从判断。
+    # 这里仅在拿到「全 0」数据时补一次隧道体检(happy path 零开销),
+    # 隧道确实断了就把默默的 0 换成明确可操作的报错。
+    if platform == Platform.iOS and _ios_result_all_zero(target, result):
+        tunnel_hint = check_tunnel_down(deviceid)
+        if tunnel_hint:
+            logger.warning(f"[iOS Perf] 采集到全 0 且隧道体检失败: {tunnel_hint}")
+            result = {'status': 0, 'msg': tunnel_hint, 'tunneld': False}
     return result
 
 @api.route('/apm/install/file', methods=['post', 'get'])
