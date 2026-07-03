@@ -222,8 +222,11 @@ class CPU(object):
     def getiOSCpuRate(self, noLog=False):
         """get the iOS cpu rate of a process, unit:%"""
         apm = iosPerformance(self.pkgName, self.deviceId)
-        appCpuRate = round(float(apm.getPerformance(apm.cpu)[0]), 2)
-        sysCpuRate = round(float(apm.getPerformance(apm.cpu)[1]), 2)
+        # 只调一次:getPerformance 每次会新建并销毁 DVT adapter,走一趟隧道往返(~1.5s)。
+        # 原来分别取 [0]/[1] 调了两次 -> 两趟隧道、且都是"首帧",配合类级 CPU 基准一次即可。
+        cpu = apm.getPerformance(apm.cpu)
+        appCpuRate = round(float(cpu[0]), 2)
+        sysCpuRate = round(float(cpu[1]), 2)
         if noLog is False:
             apm_time = datetime.datetime.now().strftime('%H:%M:%S.%f')
             f.add_log(os.path.join(f.report_dir,'cpu_app.log'), apm_time, appCpuRate)

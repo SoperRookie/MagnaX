@@ -96,16 +96,45 @@
     });
   }
 
+  // 把 "HH:MM:SS.ffffff" 解析成当天秒数
+  function tsToSec(x){
+    var m = String(x).split(':');
+    if(m.length < 3) return null;
+    var h=parseFloat(m[0]), mi=parseFloat(m[1]), s=parseFloat(m[2]);
+    if(isNaN(h)||isNaN(mi)||isNaN(s)) return null;
+    return h*3600 + mi*60 + s;
+  }
+  // 秒 → m:ss
+  function fmtDur(sec){
+    sec = Math.max(0, Math.round(sec));
+    var m = Math.floor(sec/60), s = sec % 60;
+    return m + ':' + (s<10?'0':'') + s;
+  }
+  // [{x:时间戳,y}] -> [[相对秒, y]](首点=0),两份报告按"测试进行到第几秒"对齐
+  function toRelPairs(arr){
+    arr = arr || [];
+    if(!arr.length) return [];
+    var t0 = tsToSec(arr[0].x);
+    return arr.map(function(p){
+      var t = tsToSec(p.x);
+      var rel = (t==null||t0==null) ? 0 : (t - t0);
+      if(rel < 0) rel += 86400;   // 跨午夜兜底
+      return [Math.round(rel*1000)/1000, p.y];
+    });
+  }
+
   function cmpChart(id, title, suffix, a1, a2){
     Highcharts.chart(id, {
       chart:{ type:'line', height:280 },
       title:{ text:title, style:{ fontSize:'14px' } },
       credits:{ enabled:false }, legend:{ enabled:true },
-      xAxis:{ title:{ text:lan=='cn'?'采样序号':'sample' }, allowDecimals:false },
-      yAxis:{ title:{ text:null } }, tooltip:{ valueSuffix:suffix },
+      xAxis:{ title:{ text:lan=='cn'?'测试时长 (m:ss)':'Elapsed (m:ss)' },
+              labels:{ formatter:function(){ return fmtDur(this.value); } } },
+      yAxis:{ title:{ text:null } },
+      tooltip:{ formatter:function(){ return fmtDur(this.x)+'<br/>'+this.series.name+': '+this.y+suffix; } },
       series:[
-        { name:R1, data:(a1||[]).map(function(p){return p.y;}), color:'#206bc4' },
-        { name:R2, data:(a2||[]).map(function(p){return p.y;}), color:'#d6336c' }
+        { name:R1, data:toRelPairs(a1), color:'#206bc4' },
+        { name:R2, data:toRelPairs(a2), color:'#d6336c' }
       ]
     });
   }

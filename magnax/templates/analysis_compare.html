@@ -237,7 +237,7 @@
     </div>
     <div class="card battery-card mt-3">
         <div class="card-header">
-            <div class='card-title'>Battery: Level</div>
+            <div class='card-title'>电池 Battery</div>
             <div class="card-actions btn-actions">
                 <a class="btn-action cursor-pointer" id="battery_loading">
                     <svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" /><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" /></svg>
@@ -248,7 +248,7 @@
             </div>
         </div>
         <div class="card-body">
-            <div id="chart-battery"></div>
+            <div id="battery-charts"></div>
         </div>
     </div>
     <div class="card networkdata-card-recv mt-3">
@@ -327,6 +327,53 @@
         }
     }
 
+    var SCENE1 = '{{ scene1 }}', SCENE2 = '{{ scene2 }}';
+
+    // 把 "HH:MM:SS.ffffff" 解析成当天秒数
+    function tsToSec(x){
+        var m = String(x).split(':');
+        if(m.length < 3) return null;
+        var h=parseFloat(m[0]), mi=parseFloat(m[1]), s=parseFloat(m[2]);
+        if(isNaN(h)||isNaN(mi)||isNaN(s)) return null;
+        return h*3600 + mi*60 + s;
+    }
+    // 把 [{x:时间戳,y}] 序列转成"相对测试起点的秒数"(首点=0)。
+    // 两份报告在不同墙钟时间跑,原来按绝对时间戳对齐永远对不上;
+    // 相对化后都从 0 开始,可按"测试进行到第几秒"叠合对比。
+    function toRelative(arr){
+        arr = arr || [];
+        if(!arr.length) return [];
+        var t0 = tsToSec(arr[0].x);
+        return arr.map(function(p){
+            var t = tsToSec(p.x);
+            var rel = (t==null||t0==null) ? 0 : (t - t0);
+            if(rel < 0) rel += 86400;   // 跨午夜兜底
+            return { x: Math.round(rel*1000)/1000, y: p.y };
+        });
+    }
+    // 秒 → m:ss
+    function fmtDur(sec){
+        sec = Math.max(0, Math.round(sec));
+        var m = Math.floor(sec/60), s = sec % 60;
+        return m + ':' + (s<10?'0':'') + s;
+    }
+    // 组装两条对比序列(均按相对时间对齐)
+    function cmpSeries(data){
+        data = data || {};
+        return [
+            { name: SCENE1, data: toRelative(data['scene1']) },
+            { name: SCENE2, data: toRelative(data['scene2']) }
+        ];
+    }
+
+    var BATTERY_LABELS = {
+        batteryLevel:  '电量 Level (%)',
+        batteryTem:    '温度 Temperature (℃)',
+        batteryCurrent:'电流 Current (mA)',
+        batteryVoltage:'电压 Voltage (mV)',
+        batteryPower:  '功率 Power (mW)'
+    };
+
     function options(type,dataLabels=false) {
         let options = {
             chart: {
@@ -361,11 +408,16 @@
             strokeDashArray: 4,
             },
             xaxis: {
-                name: "time",
-                tickAmount:6,
+                type: 'numeric',
+                tickAmount: 6,
                 labels: {
                     rotate: 0,
-                }
+                    formatter: function(val){ return fmtDur(val); }
+                },
+                title: { text: '测试时长 (m:ss)' }
+            },
+            tooltip: {
+                x: { formatter: function(val){ return fmtDur(val); } }
             },
         };
         return options
@@ -392,48 +444,54 @@
                 swal.close();
             },
             success: function (data) {
-                cpu_chart.updateSeries([{
-                    name: '{{ scene1 }}',
-                    data: data['scene1']
-                },{
-                    name: '{{ scene2 }}',
-                    data: data['scene2']
-                }])
+                cpu_chart.updateSeries(cmpSeries(data))
             }
         });
     });
     
-    var battery_chart = new ApexCharts(document.querySelector("#chart-battery"), options('line'));
-        battery_chart.render();
-        $('#battery_loading').click(function () {
-            $.ajax({
-                url: '/apm/log/compare',
-                type: "GET",
-                async: true,
-                cache: false,
-                data:{
-                    scene1:'{{ scene1 }}',
-                    scene2:'{{ scene2 }}',
-                    target:'battery',
-                    platform:platform
-                },
-                beforeSend: function () {
-                    SwalLoading('Loading','')
-                },
-                complete: function () {
-                    swal.close();
-                },
-                success: function (data) {
-                    battery_chart.updateSeries([{
-                        name: '{{ scene1 }}',
-                        data: data['scene1']
-                    },{
-                        name: '{{ scene2 }}',
-                        data: data['scene2']
-                    }])
-                }
-            });
+    // 电池对比:按平台把所有电池维度各画一张对比图(Android:电量/温度;iOS:温度/电流/电压/功率)
+    var battery_charts = {};
+    $('#battery_loading').click(function () {
+        $.ajax({
+            url: '/apm/log/compare',
+            type: "GET",
+            async: true,
+            cache: false,
+            data:{
+                scene1: SCENE1,
+                scene2: SCENE2,
+                target:'battery',
+                platform:platform
+            },
+            beforeSend: function () {
+                SwalLoading('Loading','')
+            },
+            complete: function () {
+                swal.close();
+            },
+            success: function (data) {
+                var order = data['order'] || [];
+                var dims = data['dims'] || {};
+                var host = document.getElementById('battery-charts');
+                host.innerHTML = '';
+                battery_charts = {};
+                order.forEach(function(key){
+                    var title = document.createElement('div');
+                    title.className = 'card-title mt-2 mb-1';
+                    title.style.fontSize = '13px';
+                    title.textContent = BATTERY_LABELS[key] || key;
+                    var cd = document.createElement('div');
+                    cd.id = 'chart-batt-' + key;
+                    host.appendChild(title);
+                    host.appendChild(cd);
+                    var ch = new ApexCharts(cd, options('line'));
+                    ch.render();
+                    ch.updateSeries(cmpSeries(dims[key]));
+                    battery_charts[key] = ch;
+                });
+            }
         });
+    });
     if(platform == 'iOS'){
         var gpu_chart = new ApexCharts(document.querySelector("#chart-gpu"), options('line'));
         gpu_chart.render();
@@ -456,13 +514,7 @@
                     swal.close();
                 },
                 success: function (data) {
-                    gpu_chart.updateSeries([{
-                        name: '{{ scene1 }}',
-                        data: data['scene1']
-                    },{
-                        name: '{{ scene2 }}',
-                        data: data['scene2']
-                    }])
+                    gpu_chart.updateSeries(cmpSeries(data))
                 }
             });
         });
@@ -489,13 +541,7 @@
                 swal.close();
             },
             success: function (data) {
-                fps_chart.updateSeries([{
-                    name: '{{ scene1 }}',
-                    data: data['scene1']
-                },{
-                    name: '{{ scene2 }}',
-                    data: data['scene2']
-                }])
+                fps_chart.updateSeries(cmpSeries(data))
             }
         });
     });
@@ -521,13 +567,7 @@
                 swal.close();
             },
             success: function (data) {
-                mem_chart.updateSeries([{
-                    name: '{{ scene1 }}',
-                    data: data['scene1']
-                },{
-                    name: '{{ scene2 }}',
-                    data: data['scene2']
-                }])
+                mem_chart.updateSeries(cmpSeries(data))
             }
         });
     });
@@ -553,13 +593,7 @@
                 swal.close();
             },
             success: function (data) {
-                network_recv_chart.updateSeries([{
-                    name: '{{ scene1 }}',
-                    data: data['scene1']
-                },{
-                    name: '{{ scene2 }}',
-                    data: data['scene2']
-                }])
+                network_recv_chart.updateSeries(cmpSeries(data))
             }
         });
     });
@@ -585,14 +619,7 @@
                 swal.close();
             },
             success: function (data) {
-                console.log(data)
-                network_send_chart.updateSeries([{
-                    name: '{{ scene1 }}',
-                    data: data['scene1']
-                },{
-                    name: '{{ scene2 }}',
-                    data: data['scene2']
-                }])
+                network_send_chart.updateSeries(cmpSeries(data))
             }
         });
     });
