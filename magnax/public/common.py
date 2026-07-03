@@ -1671,6 +1671,26 @@ class Scrcpy:
             elif bit.__contains__('32'):
                 path =  cls.DEFAULT_SCRCPY_PATH["32"]
         return path
+
+    @classmethod
+    def check_available(cls):
+        """检测 scrcpy 是否可用,返回 (是否可用, 不可用时的可操作提示)。
+
+        投屏/录屏在 Mac/Linux 依赖 PATH 里的 scrcpy(自带二进制仅 Windows)。缺失时旧逻辑
+        用 os.system('nohup ... &') 会因后台化立刻返回 0 而"假报成功",导致点了投屏没反应
+        也不报错。故起进程前先用此方法显式拦截并给出明确提示。"""
+        path = cls.scrcpy_path()
+        ok = os.path.isfile(path) if os.path.isabs(path) else (shutil.which(path) is not None)
+        if ok:
+            return True, ''
+        sysname = platform.system().lower()
+        if 'windows' in sysname:
+            msg = 'scrcpy 不可用:自带二进制缺失或损坏,请重新安装 magnax'
+        elif sysname == 'darwin':
+            msg = 'scrcpy 未安装,投屏/录屏不可用。请先执行:brew install scrcpy'
+        else:
+            msg = 'scrcpy 未安装,投屏/录屏不可用。请用包管理器安装 scrcpy(如 apt install scrcpy)'
+        return False, msg
     
     @classmethod
     def start_record(cls, device):
