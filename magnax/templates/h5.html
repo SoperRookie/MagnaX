@@ -10,6 +10,14 @@
   .h5-stat .v { font-size:22px; font-weight:700; }
   .h5-stat .l { font-size:12px; color:#888; margin-top:4px; }
   .h5-chart { height:260px; }
+  /* 深色主题只覆盖了 .form-control/.select2-selection,漏了 .form-select,导致平台原生下拉
+     透明看不见。用与其它输入框完全相同的主题变量,保证背景/边框/字色一致 */
+  #h5-platform {
+    background-color: var(--magnax-input-bg) !important;
+    border-color: var(--magnax-border-weak) !important;
+    color: var(--magnax-text-primary) !important;
+  }
+  #h5-platform option { background-color: var(--magnax-input-bg); color: var(--magnax-text-primary); }
 </style>
 {% endblock %}
 
@@ -29,7 +37,8 @@
 {% endblock %}
 
 {% block page_title %}
-<span style="font-weight:bolder;">{% if lan == 'cn' %}H5 性能 (安卓 Chrome){% else %}H5 Performance (Android Chrome){% endif %}</span>
+<span style="font-weight:bolder;">{% if lan == 'cn' %}H5 性能{% else %}H5 Performance{% endif %}</span>
+<span id="h5-hint" class="text-muted" style="font-size:13px;font-weight:normal;margin-left:10px;"></span>
 {% endblock %}
 
 {% block page_body %}
@@ -39,11 +48,18 @@
   <div class="card mb-3">
     <div class="card-body">
       <div class="row g-2 align-items-end mb-2">
-        <div class="col-md-3">
+        <div class="col-md-2">
+          <label class="form-label">{% if lan == 'cn' %}平台{% else %}Platform{% endif %}</label>
+          <select id="h5-platform" class="form-select">
+            <option value="Android">{% if lan == 'cn' %}安卓 (Chrome/WebView){% else %}Android{% endif %}</option>
+            <option value="iOS">{% if lan == 'cn' %}iOS (Safari/WKWebView){% else %}iOS{% endif %}</option>
+          </select>
+        </div>
+        <div class="col-md-2">
           <label class="form-label">{% if lan == 'cn' %}设备{% else %}Device{% endif %}</label>
           <select id="h5-device" class="select-device select2-selection--single" style="width:100%"></select>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-3" id="h5-target-col">
           <label class="form-label">{% if lan == 'cn' %}调试目标 (Chrome / App WebView){% else %}Target{% endif %}</label>
           <select id="h5-target" class="select2-selection--single" style="width:100%"></select>
         </div>
@@ -51,10 +67,10 @@
           <label class="form-label">{% if lan == 'cn' %}页面 tab{% else %}Page tab{% endif %}</label>
           <select id="h5-tab" class="select2-selection--single" style="width:100%"></select>
         </div>
-        <div class="col-md-3">
-          <label class="form-label">{% if lan == 'cn' %}宿主应用包名 (发热归因){% else %}Host package{% endif %}</label>
+        <div class="col-md-2">
+          <label class="form-label">{% if lan == 'cn' %}宿主包名/Bundle (发热归因){% else %}Host package{% endif %}</label>
           <input id="h5-host-pkg" type="text" class="form-control" value="com.android.chrome"
-                 placeholder="com.android.chrome / 你的App包名">
+                 placeholder="com.android.chrome / com.apple.mobilesafari">
         </div>
       </div>
       <div class="row">
@@ -182,14 +198,33 @@
   function h5Device(){ return $('#h5-device').val(); }
   function h5Ws(){ return $('#h5-tab').val(); }
   function h5Socket(){ return $('#h5-target').val() || ''; }
+  function h5Platform(){ return $('#h5-platform').val() || 'Android'; }
+  function isIOS(){ return h5Platform() === 'iOS'; }
 
-  // 初始化:拉安卓设备列表
+  // 统一采集参数:安卓走 ws/socket,iOS 走 url/pageid;都带 platform+device。
+  // extra 里的键覆盖基础键。
+  function h5Base(extra){
+    var p = { platform: h5Platform(), device: h5Device() };
+    if(isIOS()){
+      var pid = $('#h5-tab').val() || '';
+      p.pageid = pid; p.url = h5PageUrls[pid] || '';
+    } else {
+      p.ws = h5Ws(); p.socket = h5Socket();
+    }
+    return $.extend(p, extra || {});
+  }
+
+  // 页面已选(两平台通用):安卓看 ws 值,iOS 看 tab 值(=页面 id)
+  function h5PageSelected(){ return !!$('#h5-tab').val(); }
+
+  // 初始化:按平台拉设备列表
   function initH5Env(){
+    var plat = h5Platform();
     $.ajax({
-      url: Host + '/device/info?platform=Android', type:'GET', cache:false, timeout:10000,
+      url: Host + '/device/info?platform=' + plat, type:'GET', cache:false, timeout:10000,
       beforeSend:function(){ $('#h5-device').empty(); },
       success:function(data){
-        if(data['status'] != 1){ SwalFire('error', lan=='cn'?'连接失败':'Connect failed', lan=='cn'?'未发现安卓设备':'No device', 4000); return; }
+        if(data['status'] != 1){ SwalFire('error', lan=='cn'?'连接失败':'Connect failed', lan=='cn'?'未发现设备':'No device', 4000); return; }
         for(var i=0;i<data['devices'].length;i++){ $('#h5-device').append('<option>'+data['devices'][i].trim()+'</option>'); }
         $('#h5-device').trigger('change');
         refreshTargets();
@@ -198,9 +233,10 @@
     });
   }
 
-  // 刷新调试目标(Chrome + 各 App WebView)
+  // 刷新调试目标。安卓:Chrome + 各 App WebView;iOS:无独立目标层,直接列 Safari/WKWebView 页面。
   function refreshTargets(){
     if(!h5Device()) return;
+    if(isIOS()){ refreshPages(); return; }   // iOS 目标=页面,跳过 sockets 直接列页面
     $.ajax({
       url: Host + '/device/h5/sockets', type:'GET', cache:false, timeout:15000,
       data:{ device: h5Device() },
@@ -224,34 +260,70 @@
   // 刷新可调试页面 tab
   function refreshPages(){
     if(!h5Device()) return;
+    var ios = isIOS();
     $.ajax({
-      url: Host + '/device/h5/pages', type:'GET', cache:false, timeout:15000,
-      data:{ device: h5Device(), socket: h5Socket() },
+      url: Host + '/device/h5/pages', type:'GET', cache:false, timeout:20000,
+      data:{ device: h5Device(), platform: h5Platform(), socket: ios ? '' : h5Socket() },
       beforeSend:function(){ SwalLoading(lan=='cn'?'读取页面':'Loading', lan=='cn'?'正在读取页面列表':'Reading tabs'); },
       success:function(data){
         swal.close();
         $('#h5-tab').empty();
         if(data['status'] != 1){ SwalFire('error', lan=='cn'?'读取失败':'Failed', data['msg']||'', 5000); return; }
-        if(!data['pages'].length){ SwalFire('warning', lan=='cn'?'无可调试页面':'No page', lan=='cn'?'确认手机 Chrome 已打开 H5、非无痕':'Open H5 in Chrome', 5000); return; }
+        if(!data['pages'].length){
+          SwalFire('warning', lan=='cn'?'无可调试页面':'No page',
+            ios ? (lan=='cn'?'确认 iPhone 解锁亮屏、Safari 开着 http 页面、设置→Apps→Safari→高级→网页检查器 已开':'Enable Web Inspector & open Safari')
+                : (lan=='cn'?'确认手机 Chrome 已打开 H5、非无痕':'Open H5 in Chrome'), 6000);
+          return;
+        }
         h5PageUrls = {};
         data['pages'].forEach(function(p){
-          var label = (p.title||'untitled').substring(0,20) + ' | ' + (p.url||'').substring(0,40);
-          $('#h5-tab').append('<option value="'+p.ws+'">'+label+'</option>');
-          h5PageUrls[p.ws] = p.url || '';
+          // iOS 用页面 id 作 value(唯一标识 app+page);安卓用 ws
+          var val = ios ? p.id : p.ws;
+          var label = ios ? (p.label || ((p.title||'untitled').substring(0,20)+' | '+(p.url||'').substring(0,40)))
+                          : ((p.title||'untitled').substring(0,20)+' | '+(p.url||'').substring(0,40));
+          $('#h5-tab').append('<option value="'+val+'">'+label+'</option>');
+          h5PageUrls[val] = p.url || '';
+          // iOS:选中 Safari→com.apple.mobilesafari;WKWebView→其 bundle
+          if(ios && p.bundle){ h5TargetPkgs[val] = p.bundle; }
         });
         $('#h5-tab').trigger('change');
+        if(ios){  // iOS 自动按选中页面的 bundle 填宿主(默认 Safari)
+          var v = $('#h5-tab').val();
+          $('#h5-host-pkg').val(h5TargetPkgs[v] || 'com.apple.mobilesafari');
+        }
       },
       error:function(){ swal.close(); SwalFire('error','Server Error','',4000); }
     });
   }
 
+  // 按平台切换 UI:iOS 隐藏"调试目标"下拉 + 隐藏 WebKit 不支持的图表/指标
+  function applyPlatformUI(){
+    var ios = isIOS();
+    $('#h5-target-col').toggle(!ios);
+    // iOS WebKit 不支持:CLS/TBT/TTI(加载)、长任务/布局重算/监听器数/Documents-Frames、JS堆(阶段1暂缺)
+    var iosHideCharts = ['chart-longtask','chart-layout','chart-listeners','chart-docframes','chart-heap'];
+    iosHideCharts.forEach(function(id){ $('#'+id).closest('.col-md-6').toggle(!ios); });
+    // 加载成绩单里 iOS 无效的项灰显标注
+    var iosNA = {'m-cls':'CLS','m-tbt':'TBT','m-tti':'TTI','m-heap':'JS堆'};
+    Object.keys(iosNA).forEach(function(id){
+      var $card = $('#'+id).closest('.h5-stat');
+      $card.css('opacity', ios ? 0.35 : 1).attr('title', ios ? (lan=='cn'?'iOS/WebKit 不支持':'unsupported on iOS') : '');
+    });
+    $('#h5-hint').text(ios ? (lan=='cn'?'· iOS Safari:白屏=FCP,首屏=LCP,温度=电池温度;CLS/长任务/JS堆 WebKit 暂不支持'
+                                       :'· iOS Safari')
+                           : (lan=='cn'?'· 安卓 Chrome/WebView':'· Android'));
+    // iOS 的宿主温度取电池温度(无表层传感器),更新图标题
+    if(charts.htemp){ try{ charts.htemp.setTitle({text: ios ? (lan=='cn'?'宿主电池温度 ℃':'Battery Temp ℃')
+                                                                : (lan=='cn'?'表层温度 ℃ (手感)':'Surface Temp ℃')}); }catch(e){} }
+  }
+
   // 测一次加载
   function testLoad(){
-    if(!h5Ws()){ SwalFire('warning', lan=='cn'?'请选择页面':'Select a page', '', 3000); return; }
+    if(!h5PageSelected()){ SwalFire('warning', lan=='cn'?'请选择页面':'Select a page', '', 3000); return; }
     ensureSession(function(){   // 测加载也算会话开始,首次清空旧数据
     $.ajax({
       url: Host + '/apm/h5/load', type:'GET', cache:false, timeout:60000,
-      data:{ device: h5Device(), ws: h5Ws(), socket: h5Socket() },
+      data: h5Base(),
       beforeSend:function(){ SwalLoading(lan=='cn'?'采集中':'Collecting', lan=='cn'?'正在 reload 页面采集加载指标':'Reloading & measuring'); },
       success:function(d){
         swal.close();
@@ -322,7 +394,7 @@
     if(!pkg) return;  // 留空则不采原生
     // 单接口采集 CPU/GPU/温度并落 h5_host_*.log(保存报告时一并归档,可回看发热历史)
     $.ajax({ url: Host + '/apm/h5/host', type:'GET', cache:false, timeout:20000,
-      data:{ device: h5Device(), pkgname: pkg },
+      data:{ device: h5Device(), platform: h5Platform(), pkgname: pkg },
       success:function(d){
         if(d.status != 1) return;
         pushPoint(charts.hcpu, d.appCpuRate, 0);
@@ -336,7 +408,7 @@
     pollNative();  // 同一轮询周期叠加宿主原生指标
     $.ajax({
       url: Host + '/apm/h5/runtime', type:'GET', cache:false, timeout:20000,
-      data:{ device: h5Device(), ws: h5Ws(), socket: h5Socket() },
+      data: h5Base(),
       success:function(d){
         if(d['status'] != 1) return;
         pushPoint(charts.fps, d.fps);
@@ -394,7 +466,7 @@
   }
 
   function startMonitor(){
-    if(!h5Ws()){ SwalFire('warning', lan=='cn'?'请选择页面':'Select a page', '', 3000); return; }
+    if(!h5PageSelected()){ SwalFire('warning', lan=='cn'?'请选择页面':'Select a page', '', 3000); return; }
     if(h5Running) return;
     ensureSession(function(){   // 新会话先清空(后端日志+前端),保证从头到尾
       if(!charts.fps) initCharts();
@@ -461,13 +533,13 @@
   // rolling=true: 随监控滚动抓当前网络活动(不reload,累积整个会话); false: 手动reload完整采集
   function runWaterfall(rolling){
     if(h5Wfing) return;
-    if(!h5Ws()){ if(!rolling) SwalFire('warning', lan=='cn'?'请选择页面':'Select a page', '', 3000); return; }
+    if(!h5PageSelected()){ if(!rolling) SwalFire('warning', lan=='cn'?'请选择页面':'Select a page', '', 3000); return; }
     h5Wfing = true;
     var reset = (rolling && wfFirstWindow) ? '1' : '0';
     if(rolling){ wfFirstWindow = false; }
     $.ajax({
       url: Host+'/apm/h5/waterfall', type:'GET', cache:false, timeout: rolling?15000:35000,
-      data:{ device:h5Device(), ws:h5Ws(), socket:h5Socket(), reload: rolling?'false':'true', seconds: rolling?3:6, reset: reset },
+      data: h5Base({ reload: rolling?'false':'true', seconds: rolling?3:6, reset: reset }),
       beforeSend:function(){ if(!rolling) SwalLoading(lan=='cn'?'采集中':'Collecting', lan=='cn'?'reload 抓资源瀑布流...':'Reloading...'); },
       success:function(d){
         if(d.status==1){ renderWaterfall(d.resources, 'wf-body'); }
@@ -497,12 +569,12 @@
   // rolling=true: 随监控滚动剖析(不弹框、自动续下一轮); false: 手动剖析一次
   function runProfile(rolling){
     if(h5Profiling) return;
-    if(!h5Ws()){ if(!rolling) SwalFire('warning', lan=='cn'?'请选择页面':'Select a page', '', 3000); return; }
+    if(!h5PageSelected()){ if(!rolling) SwalFire('warning', lan=='cn'?'请选择页面':'Select a page', '', 3000); return; }
     var sec = parseInt($('#h5-prof-sec').val()) || 5;
     h5Profiling = true;
     $.ajax({
       url: Host + '/apm/h5/profile', type:'GET', cache:false, timeout:(sec+40)*1000,
-      data:{ device: h5Device(), ws: h5Ws(), socket: h5Socket(), seconds: sec },
+      data: h5Base({ seconds: sec }),
       beforeSend:function(){ if(!rolling) SwalLoading(lan=='cn'?'剖析中':'Profiling', lan=='cn'?('采集 '+sec+' 秒 CPU 剖析,请让页面正常跑...'):('Profiling '+sec+'s...')); },
       success:function(d){
         if(d.status == 1){ renderProfTable(d.top); }
@@ -520,8 +592,21 @@
   function profileH5(){ runProfile(false); }  // 手动剖析一次
 
   $(document).ready(function(){
-    // 切换调试目标:自动填宿主包名 + 刷新该目标的页面列表
+    // 切换平台:调整 UI + 默认宿主包名 + 重新拉设备/目标
+    $('#h5-platform').on('change', function(){
+      if(h5Running){ stopMonitor(); }
+      $('#h5-host-pkg').val(isIOS() ? 'com.apple.mobilesafari' : 'com.android.chrome');
+      applyPlatformUI();
+      $('#h5-target').empty(); $('#h5-tab').empty(); h5PageUrls = {}; h5TargetPkgs = {};
+      initH5Env();
+    });
+    // iOS:切换页面时同步宿主 bundle(Safari 页→Safari;WKWebView 页→其 App)
+    $('#h5-tab').on('change', function(){
+      if(isIOS()){ var v = $(this).val(); $('#h5-host-pkg').val(h5TargetPkgs[v] || 'com.apple.mobilesafari'); }
+    });
+    // 切换调试目标(安卓):自动填宿主包名 + 刷新该目标的页面列表
     $('#h5-target').on('change', function(){
+      if(isIOS()) return;
       var pkg = h5TargetPkgs[h5Socket()];
       if(pkg){ $('#h5-host-pkg').val(pkg); }
       refreshPages();
@@ -534,6 +619,7 @@
     $('#wf-live').on('change', function(){
       if($(this).is(':checked') && h5Running && !h5Wfing){ wfFirstWindow = true; runWaterfall(true); }
     });
+    applyPlatformUI();
     initH5Env();
   });
 </script>
