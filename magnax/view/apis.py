@@ -401,16 +401,44 @@ def h5Pages():
     device = method._request(request, 'device')
     socket = request.args.get('socket') or request.form.get('socket')
     try:
-        from magnax.public.cdp_client import CDPClient
-        deviceId = d.getIdbyDevice(device, Platform.Android)
-        pages = CDPClient(deviceId, socket_name=socket).list_pages()
-        result = {'status': 1, 'pages': [
-            {'title': p.get('title', ''), 'url': p.get('url', ''),
-             'ws': p.get('webSocketDebuggerUrl', '')} for p in pages]}
+        if _h5_platform() == Platform.iOS:
+            # iOS 无独立"调试目标"层,直接用 webinspector 列 Safari/WKWebView 页面
+            from magnax.public.ios_webinspector import list_ios_targets
+            deviceId = d.getIdbyDevice(device, Platform.iOS)
+            result = {'status': 1, 'pages': list_ios_targets(deviceId)}
+        else:
+            from magnax.public.cdp_client import CDPClient
+            deviceId = d.getIdbyDevice(device, Platform.Android)
+            pages = CDPClient(deviceId, socket_name=socket).list_pages()
+            result = {'status': 1, 'pages': [
+                {'title': p.get('title', ''), 'url': p.get('url', ''),
+                 'ws': p.get('webSocketDebuggerUrl', '')} for p in pages]}
     except Exception as e:
         logger.exception(e)
         result = {'status': 0, 'msg': str(e)}
     return result
+
+def _h5_platform():
+    """H5 采集平台,默认 Android。"""
+    return request.args.get('platform') or request.form.get('platform') or Platform.Android
+
+
+def _make_h5_monitor(noLog, local_port=9333):
+    """按 platform 造对应采集器:iOS→IOSH5PerformanceMonitor(WebKit Inspector),
+    安卓→H5PerformanceMonitor(CDP)。iOS 用 pageid 选目标(替代安卓的 ws/socket)。"""
+    device = method._request(request, 'device')
+    url = request.args.get('url') or request.form.get('url')
+    if _h5_platform() == Platform.iOS:
+        from magnax.public.ios_h5_perf import IOSH5PerformanceMonitor
+        pageid = request.args.get('pageid') or request.form.get('pageid')
+        deviceId = d.getIdbyDevice(device, Platform.iOS)
+        return IOSH5PerformanceMonitor(deviceId, url=url, pageId=pageid, noLog=noLog)
+    from magnax.public.h5_perf import H5PerformanceMonitor
+    ws = request.args.get('ws') or request.form.get('ws')
+    socket = request.args.get('socket') or request.form.get('socket')
+    deviceId = d.getIdbyDevice(device, Platform.Android)
+    return H5PerformanceMonitor(deviceId, url=url, wsUrl=ws, noLog=noLog, socket=socket, local_port=local_port)
+
 
 @api.route('/apm/h5/load', methods=['post', 'get'])
 def h5Load():
@@ -420,9 +448,7 @@ def h5Load():
     ws = request.args.get('ws') or request.form.get('ws')
     socket = request.args.get('socket') or request.form.get('socket')
     try:
-        from magnax.public.h5_perf import H5PerformanceMonitor
-        deviceId = d.getIdbyDevice(device, Platform.Android)
-        mon = H5PerformanceMonitor(deviceId, url=url, wsUrl=ws, noLog=False, socket=socket)
+        mon = _make_h5_monitor(noLog=False)
         data = mon.collectLoad(do_reload=True)
         result = {'status': 1}
         result.update(data)
@@ -439,9 +465,7 @@ def h5Runtime():
     ws = request.args.get('ws') or request.form.get('ws')
     socket = request.args.get('socket') or request.form.get('socket')
     try:
-        from magnax.public.h5_perf import H5PerformanceMonitor
-        deviceId = d.getIdbyDevice(device, Platform.Android)
-        mon = H5PerformanceMonitor(deviceId, url=url, wsUrl=ws, noLog=False, socket=socket)
+        mon = _make_h5_monitor(noLog=False)
         data = mon.collectRuntime()
         result = {'status': 1}
         result.update(data)
@@ -456,9 +480,14 @@ def h5Host():
     device = method._request(request, 'device')
     pkgname = request.args.get('pkgname') or request.form.get('pkgname')
     try:
-        from magnax.public.h5_perf import H5PerformanceMonitor
-        deviceId = d.getIdbyDevice(device, Platform.Android)
-        mon = H5PerformanceMonitor(deviceId, noLog=False)
+        if _h5_platform() == Platform.iOS:
+            from magnax.public.ios_h5_perf import IOSH5PerformanceMonitor
+            deviceId = d.getIdbyDevice(device, Platform.iOS)
+            mon = IOSH5PerformanceMonitor(deviceId, noLog=False)
+        else:
+            from magnax.public.h5_perf import H5PerformanceMonitor
+            deviceId = d.getIdbyDevice(device, Platform.Android)
+            mon = H5PerformanceMonitor(deviceId, noLog=False)
         data = mon.collectHost(pkgname)
         result = {'status': 1}
         result.update(data)
@@ -475,10 +504,8 @@ def h5Profile():
     socket = request.args.get('socket') or request.form.get('socket')
     seconds = request.args.get('seconds', 5, type=int)
     try:
-        from magnax.public.h5_perf import H5PerformanceMonitor
-        deviceId = d.getIdbyDevice(device, Platform.Android)
         # 剖析用独立端口 9334,与运行时轮询(9333)隔离,二者可并发不互相打断
-        mon = H5PerformanceMonitor(deviceId, wsUrl=ws, noLog=True, socket=socket, local_port=9334)
+        mon = _make_h5_monitor(noLog=True, local_port=9334)
         data = mon.collectProfile(seconds=seconds)
         result = {'status': 1}
         result.update(data)
@@ -499,9 +526,7 @@ def h5Waterfall():
     seconds = request.args.get('seconds', 6 if do_reload else 3, type=int)
     reset = (request.args.get('reset') or request.form.get('reset')) == '1'
     try:
-        from magnax.public.h5_perf import H5PerformanceMonitor
-        deviceId = d.getIdbyDevice(device, Platform.Android)
-        mon = H5PerformanceMonitor(deviceId, url=url, wsUrl=ws, noLog=True, socket=socket, local_port=9335)
+        mon = _make_h5_monitor(noLog=True, local_port=9335)
         data = mon.collectWaterfall(do_reload=do_reload, capture_seconds=seconds, reset=reset)
         result = {'status': 1}
         result.update(data)
@@ -549,9 +574,7 @@ def h5Screenshot():
     ws = request.args.get('ws') or request.form.get('ws')
     socket = request.args.get('socket') or request.form.get('socket')
     try:
-        from magnax.public.h5_perf import H5PerformanceMonitor
-        deviceId = d.getIdbyDevice(device, Platform.Android)
-        mon = H5PerformanceMonitor(deviceId, url=url, wsUrl=ws, noLog=True, socket=socket)
+        mon = _make_h5_monitor(noLog=True)
         data = mon.collectScreenshot()
         result = {'status': 1}
         result.update(data)

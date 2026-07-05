@@ -22,6 +22,11 @@ from magnax import __version__
 # Global reference to tunneld process
 _tunneld_process = None
 
+# 免密 sudo helper:magnax 启动时杀旧+起新 tunneld,关闭时停掉。
+# 安装见 /usr/local/bin/magnax-tunneld + /etc/sudoers.d/magnax-tunneld(NOPASSWD)。
+# 未安装时自动回退到旧的 sudo 提示流程。
+_TUNNELD_HELPER = '/usr/local/bin/magnax-tunneld'
+
 app = Flask(__name__, template_folder='templates', static_folder='static')
 app.register_blueprint(api)
 app.register_blueprint(page)
@@ -218,7 +223,34 @@ def _run_with_sudo_linux(cmd_args):
 
 
 def start_tunneld():
-    """Start tunneld daemon for iOS 17+ devices."""
+    """启动 magnax 时创建全新 tunneld:优先用免密 helper 杀旧+起新,保证每次都是新的
+    (旧 tunneld 可能状态陈旧、抓不到当前设备,如 WiFi->USB 切换后)。未装 helper 则回退旧流程。"""
+    if platform.system() == 'Windows':
+        logger.warning('[iOS] tunneld is not supported on Windows')
+        return False
+    if not check_ios17_device():
+        logger.debug('[iOS] No iOS 17+ device found, skipping tunneld')
+        return True
+
+    if os.path.exists(_TUNNELD_HELPER):
+        try:
+            subprocess.run(['sudo', '-n', _TUNNELD_HELPER, 'restart'],
+                           timeout=20, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            for _ in range(15):
+                time.sleep(1)
+                if is_tunneld_running():
+                    logger.info('[iOS] tunneld 已重建(全新)')
+                    return True
+            logger.warning('[iOS] 已调用 tunneld helper 但隧道未就绪(设备是否连好并已信任?)')
+            return False
+        except Exception as e:
+            logger.warning(f'[iOS] tunneld helper 调用失败: {e},回退到旧方式')
+
+    return _start_tunneld_legacy()
+
+
+def _start_tunneld_legacy():
+    """回退流程:未装免密 helper 时,用 sudo GUI 提示启动 tunneld(不主动杀旧)。"""
     global _tunneld_process
 
     # Only run on macOS/Linux
@@ -311,16 +343,30 @@ def start_tunneld():
 
 
 def stop_tunneld():
-    """Stop tunneld daemon if we started it."""
+    """关闭 magnax 时停掉 tunneld。仅主进程执行 —— multiprocessing worker(open_url 等)
+    退出时若也跑这里会把服务还在用的 tunneld 误杀。"""
+    if multiprocessing.current_process().name != 'MainProcess':
+        return
+
+    # 优先用免密 helper 停(能停掉 sudo/root 起的 tunneld,自己 Popen 的那个 terminate 不到)
+    if os.path.exists(_TUNNELD_HELPER):
+        try:
+            subprocess.run(['sudo', '-n', _TUNNELD_HELPER, 'stop'],
+                           timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            logger.info('[iOS] tunneld 已随 magnax 关闭')
+        except Exception as e:
+            logger.debug(f'[iOS] stop tunneld failed: {e}')
+
+    # 兜底:杀掉自己 Popen 出来的那个(未装 helper 的回退场景)
     global _tunneld_process
     if _tunneld_process:
         try:
             _tunneld_process.terminate()
             _tunneld_process.wait(timeout=5)
-        except:
+        except Exception:
             try:
                 _tunneld_process.kill()
-            except:
+            except Exception:
                 pass
         _tunneld_process = None
 
@@ -333,7 +379,20 @@ def main(host=None, port=50003):
     # 默认值在导入时即求值,故 ip() 不能作为默认参数(会产生导入期 DNS 解析副作用)
     if host is None:
         host = ip()
-    # Start tunneld for iOS 17+ devices if needed
+
+    # kill(SIGTERM)关闭时也干净停掉 tunneld —— atexit/KeyboardInterrupt 只覆盖 Ctrl+C。
+    # SIGKILL(-9)无法捕获,但"下次启动杀旧建新"仍保证不残留。
+    import signal
+    def _graceful(signum, frame):
+        logger.info('stop magnax (signal {})'.format(signum))
+        stop_tunneld()
+        sys.exit(0)
+    try:
+        signal.signal(signal.SIGTERM, _graceful)
+    except Exception:
+        pass
+
+    # Start tunneld for iOS 17+ devices if needed(启动时杀旧建新)
     start_tunneld()
 
     try:
@@ -344,6 +403,7 @@ def main(host=None, port=50003):
         pool.join()
     except KeyboardInterrupt:
         logger.info('stop magnax success')
+        stop_tunneld()
         sys.exit()
     except Exception as e:
-        logger.exception(e)            
+        logger.exception(e)
