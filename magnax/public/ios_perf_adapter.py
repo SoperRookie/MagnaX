@@ -107,6 +107,12 @@ class PMD3PerformanceAdapter:
     # 结构: {device_id: (last_cpu_total{pid: int}, last_cpu_time)}
     _cpu_baseline: Dict[str, Tuple[Dict[int, int], float]] = {}
 
+    # H5 宿主采集专用:除目标进程外还要累加进 app CPU 的辅助进程名前缀(实例级可覆盖)。
+    # Safari / WKWebView 的页面 JS 跑在 com.apple.WebKit.WebContent,合成在 com.apple.WebKit.GPU,
+    # 网络在 com.apple.WebKit.Networking;宿主进程本身(如 MobileSafari)几乎不耗 CPU,
+    # 只看它会得到恒 ~0 的"App CPU"。为空时保持原生采集口径(仅目标进程),不影响原生流程。
+    helper_name_prefixes: Tuple[str, ...] = ()
+
     def __init__(self, device_id: str, bundle_id: str):
         self.device_id = device_id
         self.bundle_id = bundle_id
@@ -253,6 +259,7 @@ class PMD3PerformanceAdapter:
                 try:
                     self._dvt = self._create_dvt_service()
                     if self._dvt:
+                        self._init_error = None  # 之前的瞬时失败已恢复,别把陈旧错误带给上层
                         self._resolve_target_pid()
                         return True
                 except Exception as e:
@@ -608,6 +615,25 @@ class PMD3PerformanceAdapter:
         self._last_cpu_total[pid] = cpu_total
         return 0.0
 
+    def _helper_cpu(self, processes: List[Dict], per_pid: Dict, app_pid) -> float:
+        """累加名字匹配 helper_name_prefixes 的辅助进程 CPU(排除目标进程自身)。
+        未配置前缀时返回 0,原生采集口径不变。"""
+        if not self.helper_name_prefixes:
+            return 0.0
+        total = 0.0
+        matched = []
+        for p in processes:
+            pid = p.get('pid')
+            if pid == app_pid:
+                continue
+            name = str(p.get('name') or p.get('execName') or '')
+            if name.startswith(self.helper_name_prefixes):
+                total += per_pid.get(pid, 0.0)
+                matched.append(name)
+        if matched:
+            logger.debug(f"[iOS Perf] helper processes {matched} cpu={total:.2f}")
+        return total
+
     def get_cpu(self) -> Tuple[float, float]:
         """
         Get CPU usage.
@@ -638,27 +664,27 @@ class PMD3PerformanceAdapter:
                     sys_cpu = total_load / cpu_count if cpu_count > 1 else total_load
 
             if processes:
+                # 每个 pid 的 CPU 在本轮只算一次(差值算一次即更新基准,同一轮重复算会得 0),
+                # 统一算好后供 目标进程 / 辅助进程 / 系统兜底 三处复用。
+                per_pid = {}
+                for p in processes:
+                    raw = p.get('cpuUsage')
+                    if raw is not None and isinstance(raw, (int, float)) and raw > 0:
+                        per_pid[p.get('pid')] = float(raw)
+                    else:
+                        # cpuUsage 在 iOS 17+ 常为空,用 cpuTotalUser+cpuTotalSystem 差值
+                        per_pid[p.get('pid')] = self._calculate_cpu_from_delta(p, current_time)
+
                 # Find target app process
                 app_proc = self._find_app_process(processes)
                 if app_proc:
-                    # Try cpuUsage field first
-                    raw_cpu = app_proc.get('cpuUsage')
-                    if raw_cpu is not None and isinstance(raw_cpu, (int, float)) and raw_cpu > 0:
-                        app_cpu = float(raw_cpu)
-                    else:
-                        # Calculate from cpuTotalUser + cpuTotalSystem delta
-                        app_cpu = self._calculate_cpu_from_delta(app_proc, current_time)
+                    app_cpu = per_pid.get(app_proc.get('pid'), 0.0)
+                    # H5 宿主口径:加上 WebKit 辅助进程(页面真正的 CPU 消耗在那里)
+                    app_cpu += self._helper_cpu(processes, per_pid, app_proc.get('pid'))
 
                 # Calculate system CPU from all processes if not available
                 if sys_cpu <= 0:
-                    total_cpu = 0.0
-                    for p in processes:
-                        raw = p.get('cpuUsage')
-                        if raw is not None and isinstance(raw, (int, float)) and raw > 0:
-                            total_cpu += float(raw)
-                        else:
-                            # Use delta calculation
-                            total_cpu += self._calculate_cpu_from_delta(p, current_time)
+                    total_cpu = sum(per_pid.values())
                     sys_cpu = total_cpu / cpu_count if cpu_count > 0 else total_cpu
 
             # Update last CPU time for delta calculations
@@ -812,6 +838,10 @@ class PMD3PerformanceAdapter:
     def get_init_error(self) -> Optional[str]:
         """Get initialization error message if any."""
         return self._init_error
+
+    def is_connected(self) -> bool:
+        """DVT 是否已连上(未连上时 CPU/内存/GPU 全部静默为 0,上层据此报错而不是假装有数据)。"""
+        return self._dvt is not None
 
     def _close_dvt(self):
         """Close DVT service."""

@@ -116,10 +116,14 @@ class IOSH5PerformanceMonitor(object):
         self.url = url
         self.pageId = pageId
         self.noLog = noLog
-        self.insp = get_inspector(deviceId)
+        # 懒加载:只有采 H5 指标(load/runtime)才需要 inspector。宿主采集(/apm/h5/host)走 DVT,
+        # 与 runtime 轮询并发触发,这里若也抢 inspector 单例会平白多一条连接/竞争。
+        self.insp = None
 
     def _connect(self):
         """确保连到目标页面(按 url/pageId 选;已连同页则复用)。"""
+        if self.insp is None:
+            self.insp = get_inspector(self.deviceId)
         self.insp.connect_page(url=self.url, page_id=self.pageId)
 
     def _eval_json(self, js):
@@ -181,8 +185,11 @@ class IOSH5PerformanceMonitor(object):
 
     def collectHost(self, bundle):
         """采宿主 App(Safari=com.apple.mobilesafari 或自家 App bundle)的原生指标做发热归因。
-        复用 iOS 原生 DVT 适配器(CPU/内存/GPU)+ 电池温度。落 h5_host_*.log,与安卓同名进报告。"""
+        复用 iOS 原生 DVT 适配器(CPU/内存/GPU)+ 电池温度。落 h5_host_*.log,与安卓同名进报告。
+        CPU 口径 = 宿主进程 + com.apple.WebKit.* 辅助进程之和(页面真正的消耗在 WebContent/GPU 进程)。
+        iOS 17+ 需 tunneld 隧道;隧道不可用时返回 error 字段(不落盘),由接口层报给前端。"""
         appCpu = sysCpu = mem = gpuVal = temp = 0
+        error = None
         try:
             adapter = _get_host_adapter(self.deviceId, bundle)
             appCpu, sysCpu = adapter.get_cpu()
@@ -191,9 +198,18 @@ class IOSH5PerformanceMonitor(object):
                 gpuVal = adapter.get_gpu()
             except Exception:
                 gpuVal = 0
+            if not adapter.is_connected():
+                # DVT 没连上(iOS 17+ 典型是 tunneld 未起/已断):CPU/内存/GPU 全是假 0。
+                # H5 指标走 webinspector 不依赖隧道,所以会出现"H5 数据正常、CPU/GPU 一直 0"的现象。
+                error = self._host_error_hint(adapter)
         except Exception as e:
             logger.warning(f'[iOS H5] 宿主原生采集失败: {e}')
+            error = str(e)
         temp = self._ios_battery_temp()  # iOS 无表层温度传感器,用电池温度做发热代理
+        if error:
+            logger.warning(f'[iOS H5] 宿主 CPU/GPU 不可用: {error}')
+            return {'appCpuRate': 0, 'systemCpuRate': 0, 'gpu': 0, 'memory': 0,
+                    'temperature': temp, 'error': error}
         if not self.noLog:
             t = self._now()
             f.add_log(os.path.join(f.report_dir, 'h5_host_cpu_app.log'), t, appCpu)
@@ -203,6 +219,17 @@ class IOSH5PerformanceMonitor(object):
             f.add_log(os.path.join(f.report_dir, 'h5_host_temp.log'), t, temp)
         return {'appCpuRate': appCpu, 'systemCpuRate': sysCpu, 'gpu': gpuVal,
                 'memory': mem, 'temperature': temp}
+
+    def _host_error_hint(self, adapter):
+        """DVT 未连上时给可操作的提示:优先隧道体检结论,其次适配器自己的初始化错误。"""
+        try:
+            from magnax.public.ios_perf_adapter import check_tunnel_down
+            hint = check_tunnel_down(self.deviceId)
+            if hint:
+                return hint
+        except Exception:
+            pass
+        return adapter.get_init_error() or 'iOS 性能服务(DVT)未连接,CPU/GPU 无法采集'
 
     def _ios_battery_temp(self):
         """iOS 电池温度(℃)做发热代理。DiagnosticsService.get_battery() 的 Temperature,
@@ -276,5 +303,9 @@ def _get_host_adapter(device_id, bundle):
     ad = _host_adapters.get(key)
     if ad is None:
         ad = PyiOSDeviceAdapter(device_id, bundle)
+        # H5 口径:宿主进程 + WebKit 辅助进程(WebContent/GPU/Networking)。
+        # 页面 JS/渲染都在辅助进程里,只看 MobileSafari 或 App 主进程会得到恒 ~0 的 CPU。
+        # 后台标签/后台 App 的 WebContent 会被系统挂起,CPU 接近 0,基本不干扰前台页面的读数。
+        ad.helper_name_prefixes = ('com.apple.WebKit.',)
         _host_adapters[key] = ad
     return ad

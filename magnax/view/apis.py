@@ -509,8 +509,15 @@ def h5Host():
             deviceId = d.getIdbyDevice(device, Platform.Android)
             mon = H5PerformanceMonitor(deviceId, noLog=False)
         data = mon.collectHost(pkgname)
-        result = {'status': 1}
-        result.update(data)
+        err = data.pop('error', None)
+        if err:
+            # iOS 17+ 隧道断/未起时 DVT 连不上,CPU/GPU 会静默全 0;这里明确报错让前端提示,
+            # 否则用户只看到"H5 指标正常、CPU/GPU 没数据"无从排查。
+            result = {'status': 0, 'msg': err, 'tunneld': False}
+            result.update(data)
+        else:
+            result = {'status': 1}
+            result.update(data)
     except Exception as e:
         logger.exception(e)
         result = {'status': 0, 'msg': str(e)}

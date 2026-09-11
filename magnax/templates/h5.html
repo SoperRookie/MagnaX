@@ -194,6 +194,7 @@
   var h5SessionActive = false;  // 一次测试会话进行中(从首次测加载/开始监控到保存)
   var h5PageUrls = {};      // ws -> 页面url,保存报告时用作页面标识
   var h5TargetPkgs = {};    // socket -> 包名(选 WebView 时自动填宿主包名)
+  var hostErrShown = false; // 宿主采集失败提示是否已弹过(避免每次轮询刷屏)
 
   function h5Device(){ return $('#h5-device').val(); }
   function h5Ws(){ return $('#h5-tab').val(); }
@@ -396,7 +397,16 @@
     $.ajax({ url: Host + '/apm/h5/host', type:'GET', cache:false, timeout:20000,
       data:{ device: h5Device(), platform: h5Platform(), pkgname: pkg },
       success:function(d){
-        if(d.status != 1) return;
+        if(d.status != 1){
+          // 宿主 CPU/GPU 采不到(典型:iOS 17+ tunneld 未起/已断)。只弹一次,恢复后可再弹
+          if(d.msg && !hostErrShown){
+            hostErrShown = true;
+            SwalFire('warning', lan=='cn'?'宿主 CPU/GPU 采集失败':'Host CPU/GPU failed', d.msg, 8000);
+          }
+          if(d.temperature !== undefined) pushPoint(charts.htemp, d.temperature);  // 温度不依赖隧道,照常出图
+          return;
+        }
+        hostErrShown = false;
         pushPoint(charts.hcpu, d.appCpuRate, 0);
         pushPoint(charts.hcpu, d.systemCpuRate, 1);
         pushPoint(charts.hgpu, d.gpu);
