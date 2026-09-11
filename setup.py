@@ -44,6 +44,8 @@ setuptools.setup(
         'psutil',
         'opencv-python',
         'pymobiledevice3>=7.0.0,<8.0.0',
+        # construct-typing 0.8+ 的 csfield 校验与 pymobiledevice3 7.x 不兼容(afc.py 报 DataclassFieldError)
+        'construct-typing>=0.7.0,<0.8.0',
     ],
     entry_points={
         'console_scripts': [
