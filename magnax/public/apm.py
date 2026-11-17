@@ -62,6 +62,27 @@ def get_ios_lockdown_client(device_id):
         logger.error(f"Failed to create lockdown client for device {device_id}: {e}")
         return None
 
+def get_ios_battery_info(lockdown_client):
+    """读 iOS 电池 IORegistry(IOPMPowerSource)。
+    iOS 27 起该节点不再带 Temperature,缺失时从 AppleSmartBatteryPack 的 BatteryData 补
+    (单位相同:百分之一摄氏度),与 pymobiledevice3 新版 get_battery() 的兜底一致。"""
+    from pymobiledevice3.services.diagnostics import DiagnosticsService
+    diagnostics = DiagnosticsService(lockdown_client)
+    info = diagnostics.get_battery()
+    if not info or info.get('Temperature'):
+        return info
+    try:
+        pack = diagnostics.ioregistry(ioclass='AppleSmartBatteryPack') or {}
+        temperature = (pack.get('BatteryData') or {}).get('Temperature')
+        if temperature is not None:
+            info['Temperature'] = temperature
+        else:
+            logger.warning('[iOS] AppleSmartBatteryPack 也没有 Temperature,电池温度不可用')
+    except Exception as e:
+        logger.warning(f'[iOS] 从 AppleSmartBatteryPack 补电池温度失败: {e}')
+    return info
+
+
 class Target:
     CPU = 'cpu'
     Memory = 'memory'
@@ -379,11 +400,8 @@ class Battery(object):
                 return 0, 0, 0, 0
 
             # Use DiagnosticsService.get_battery() - works without tunnel
-            from pymobiledevice3.services.diagnostics import DiagnosticsService
-            diagnostics = DiagnosticsService(lockdown_client)
-
             try:
-                battery_info = diagnostics.get_battery()
+                battery_info = get_ios_battery_info(lockdown_client)
             except Exception as e:
                 logger.warning(f"DiagnosticsService.get_battery() failed: {e}")
                 return 0, 0, 0, 0
