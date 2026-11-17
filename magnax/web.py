@@ -512,6 +512,14 @@ def main(host=None, port=50003):
     except Exception:
         pass
 
+    # 采集代码基于 pymobiledevice3 7.x 的同步接口;8+ 起接口改为异步,装错版本时 iOS 功能
+    # 会全部报 'coroutine' object has no attribute ...,这里提前给出明确提示。
+    pmd3_major = _pmd3_major()
+    if pmd3_major >= 8:
+        logger.error(f'[iOS] 当前环境的 pymobiledevice3 是 {pmd3_major}.x,MagnaX 需要 7.x,iOS 功能将不可用。'
+                     f'请执行: {sys.executable} -m pip install "pymobiledevice3>=7.0.0,<8.0.0" '
+                     '"construct-typing>=0.7.0,<0.8.0"')
+
     # Start tunneld for iOS 17+ devices if needed(启动时杀旧建新)
     start_tunneld()
 
