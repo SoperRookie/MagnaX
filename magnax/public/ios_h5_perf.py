@@ -235,12 +235,11 @@ class IOSH5PerformanceMonitor(object):
         """iOS 电池温度(℃)做发热代理。DiagnosticsService.get_battery() 的 Temperature,
         不需隧道。iOS 无安卓那种表层/skin 温度传感器,电池温度是可得的最接近手感的信号。"""
         try:
-            from magnax.public.apm import get_ios_lockdown_client
-            from pymobiledevice3.services.diagnostics import DiagnosticsService
+            from magnax.public.apm import get_ios_lockdown_client, get_ios_battery_info
             lc = get_ios_lockdown_client(self.deviceId)
             if lc is None:
                 return 0
-            b = DiagnosticsService(lc).get_battery() or {}
+            b = get_ios_battery_info(lc) or {}
             temp = b.get('Temperature', 0) or 0
             return round(temp / 100.0, 1) if temp > 100 else temp
         except Exception as e:
